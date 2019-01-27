@@ -3,8 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import theano.tensor as tt
 import theano
-import mf3.mirrorfit as mf
+import mirrorfit as mf
+from collections import namedtuple
 import time
+
+PrimaryTmap = namedtuple('PrimaryTMAP', 'tx, ty, tz, rx, ry, rz, s, R')
 
 def dist(val1, val2):
 
@@ -26,7 +29,15 @@ def rot(do):
     R = np.dot(Rz,np.dot(Ry,Rx))
     return R
 
-def theano_rot(rx,ry,rz):
+def theano_rot(rx,ry,rz, rescale=True):
+    '''Return a theano tensor representing a rotation 
+    matrix using specified rotation angles rx,ry, rz'''
+
+    if rescale:
+        rx = np.pi/180. * (rx)
+        ry = np.pi/180. * (ry)
+        rz = np.pi/180. * (rz)
+
     sx = tt.sin(rx)
     sy = tt.sin(ry)
     sz = tt.sin(rz)
@@ -59,73 +70,71 @@ def getRSqFun(r_off=0., angle_off=0.):
     
     return r
 
-def print_model_params(tx=0.,ty=0.,tz=0.,rx=0.,ry=0.,rz=0.,s=1.):
-    
-        R = 4400.
+def get_model(pos, err, TMAP=None):
 
-        c = 1./R
-        k = -1.
-        target_thickness = .2
-        rot = theano_rot(rx,ry,rz)
-        print('rot',rot.eval())
-        roffset = theano.shared(np.array([0,2800.,0.]))
-        t = tt.stacklists([tx,ty,tz])
-        new_pos = s*tt.dot(rot,pos)+t[:,np.newaxis]
-        rsq = new_pos[0]**2+new_pos[1]**2
-        print('rsq',np.max(np.abs(rsq.eval())))
-        con = (c*rsq)/(1.+tt.sqrt(1.-(1.+k)*c**2.*rsq))
-        print('con',np.max(np.abs(con.eval())))
-        #a = tt.sqrt((R**2. - rsq*(k + 1.))/R**2.)
-        a=1.
-        mr = tt.sqrt(rsq)*(2.*R**2.*a*(a + 1.) + rsq*(k + 1.))/(R**3.*a*(a + 1.)**2.)
-        print('mr',np.max(np.abs(mr.eval())))
-        scale = 1./(mr**2+1.)
-        print('scale',np.max(np.abs(scale.eval())))
-        dist = (((new_pos[2]-con)*tt.sqrt(scale)) - target_thickness)*1000.
-        print('dist', np.max(np.abs(dist.eval())))
-        #test = pm.Normal('dist', mu=0, sd=tt.sqrt(point_errors+std**2), observed=dist)
-
-def get_model(pos, err):
-    
+    if TMAP is None:
+        TMAP = PrimaryTmap(1.,1.,1.,1.,1.,1.,0.,1.)
+    print(TMAP)
     with pm.Model() as model:
-        #Weak priors on translations and rotations. 
-        tx = pm.Normal('tx', mu=0, sd=10)
-        ty = pm.Normal('ty', mu=0, sd=10)
-        tz = pm.Normal('tz', mu=0, sd=10)
-        #R = pm.Normal('R', mu=4400., sd=50)
-        R = 4400.
-        std = pm.Normal('std_RV', mu=40, sd=30)
-        rx = pm.Uniform('rx', lower=-np.pi/8., upper=np.pi/8.)
-        ry = pm.Uniform('ry', lower=-np.pi/8., upper=np.pi/8.)
-        #rz = pm.Uniform('rz', lower=0, upper=2*np.pi)
-        #tx=0.
-        #ty=0.
-        #tz=0.
-        #rx=0.
-        #ry=0.
-        rz=0.#rz is completely degenrate, so don't bother fitting this
-        #s = pm.Normal('s', mu=1, sd=.1)
-        s=1.
 
-        #R = 4400.
+        #Weak priors on translations and rotations. 
+
+        #Translation variables:
+        if TMAP.tx:
+            tx = pm.Normal('tx', mu=0, sd=1000.)
+        else:
+            tx = 0.
+        if TMAP.ty:
+            ty = pm.Normal('ty', mu=0, sd=1000.)
+        else:
+            ty = 0.
+        if TMAP.tz:
+            tz = pm.Normal('tz', mu=0, sd=1000.)
+        else:
+            tz = 0.
+        #Rotation variables:
+        if TMAP.rx:
+            rx = pm.Uniform('rx', lower=-20., upper=20.)
+        else:
+            rx = 0.
+        if TMAP.ry:
+            ry = pm.Uniform('ry', lower=-20., upper=20.)
+        else:
+            ry = 0.
+        #rz = pm.Uniform('rz', lower=0, upper=2*np.pi)
+        if TMAP.rz:
+            rz = pm.Uniform('rz', lower=-20., upper=20.)
+        else:
+            rz=0.
+        if TMAP.s:
+            s = pm.Normal('s', mu=100, sd=10.)
+        else:
+            s=100.
+
+        if TMAP.R:
+            R = pm.Normal('R', mu=4400., sd=5)
+        else:
+            R = 4400.
+
+        std = pm.Normal('std_intrinsic', mu=40., sd=30.)
         c = 1./R
         k = -1.
         target_thickness = .2
         rot = theano_rot(rx,ry,rz)
         roffset = theano.shared(np.array([0,2800.,0.]))
         t = tt.stacklists([tx,ty,tz])
-        new_pos = s*tt.dot(rot,pos)+t[:,np.newaxis]
-        new_err = abs(s*tt.dot(rot,err))
+        new_pos = (s/100.)*tt.dot(rot,pos)+(1./1000.)*t[:,np.newaxis]
+        new_err = abs((s/100.)*tt.dot(rot,err))
         rsq = new_pos[0]**2+new_pos[1]**2
         sigmarsq = (new_err[0]**2*new_pos[0]+new_err[1]**2*new_pos[1])/rsq
         con = (c*rsq)/(1.+tt.sqrt(1.-(1.+k)*c**2.*rsq))
         a = tt.sqrt((R**2. - rsq*(k + 1.))/R**2.)
         mrsq = (tt.sqrt(rsq)*(3.*R**2.*a*(a + 1.) + rsq*(k + 1.))/(R**3.*a*(a + 1.)**2.))**2
-        scale = 1./(mrsq+1.)
-        dist = (((new_pos[2]-con)*tt.sqrt(scale)) - target_thickness)*1000.
+        e_rescale = 1./(mrsq+1.)
+        dist = (((new_pos[2]-con)*tt.sqrt(e_rescale)) - target_thickness)*1000.
 
-        dist_error = 1000*tt.sqrt(new_err[2]**2*scale + mrsq*scale*sigmarsq)
-        pm.Deterministic('std',tt.std(dist))
+        dist_error = 1000*tt.sqrt(new_err[2]**2*e_rescale + mrsq*e_rescale*sigmarsq)
+        pm.Deterministic('std_measurement',tt.std(dist))
         test = pm.Normal('dist', mu=0, sd=tt.sqrt(dist_error**2+std**2), observed=dist)
         #test = pm.Normal('dist', mu=0, sd=50, observed=dist)
 
@@ -133,7 +142,8 @@ def get_model(pos, err):
 
 if __name__ == '__main__':
 
-    data=mf.dataset(from_file='../mirrorfit/POLARBEAR/pb_clouds/SA_NORTH_FIELD/20181208/aligned_cryostatrenamed.txt')  
+    #data = mf.dataset(from_file='20181205_primary.txt')
+    data = mf.dataset(from_file='20181208_primary.txt')
     primary_points = [pp for pp in data if 'PRIMARY' in pp.label]
     primary = mf.dataset(points=primary_points)
 
@@ -142,12 +152,14 @@ if __name__ == '__main__':
     #for r in np.arange(-np.pi/8,np.pi/8.,.1):
     #    print_model_params(tx=10, ty=10, ry=r)
     #quit()
-    model = get_model(pos,err)
+
+    TMAP = PrimaryTmap(tx=True,ty=True, tz=True, rx=True, ry=True, rz=False, s=False, R=True)
+    model = get_model(pos,err,TMAP=TMAP)
     with model:
         trace = pm.sample(2000, tune=1000, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .95, 'max_treedepth': 15})
 
     pm.save_trace(trace)
-
-    pm.traceplot(trace, varnames=['tx','ty', 'tz','rx', 'ry', 'std', 'std_RV'])
+    print(trace)
+    pm.traceplot(trace)
     #pm.traceplot(trace, varnames=['tx','ty', 'std'])
     plt.show()
