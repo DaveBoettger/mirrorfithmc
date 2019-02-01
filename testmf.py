@@ -29,7 +29,9 @@ def rot(do):
 
 def theano_rot(rx,ry,rz, rescale=True):
     '''Return a theano tensor representing a rotation 
-    matrix using specified rotation angles rx,ry, rz'''
+    matrix using specified rotation angles rx,ry, rz
+    If rescale is True, treat the input angles as degrees.
+    '''
 
     if rescale:
         rx = np.pi/180. * (rx)
@@ -64,6 +66,15 @@ def load_param_file(fName):
     if fName.endswith('.json'):
         with open(fName) as f:
             return json.load(f)
+
+class DatasetAligner(pm.model):
+
+    def __init__(self, ds1, ds2, name='', model=None):
+        super().__init__(name, model)
+        if not ds1.keys() == ds2.keys():
+            ds1,ds2 = ds1.subsets_in_common(ds2) #restrict fit to common points
+        self.ds1 = ds1
+        self.ds2 = ds2
 
 class Mirror(pm.Model):
 

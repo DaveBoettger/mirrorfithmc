@@ -11,6 +11,8 @@ scipy = "*"
 matplotlib = "*"
 pymc3 = "*"
 ipython = "*"
+seaborn = "*"
+jupyter = "*"
 
 [requires]
 python_version = "3.6"
