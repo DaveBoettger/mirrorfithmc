@@ -40,15 +40,15 @@ def theano_rot(rx,ry,rz, rescale=True):
 
 class TheanoTransform():
     '''Define a transform object that can act on DatasetTenors and themselves via multiplication
-    The operation returs either a new DatasetTensor or a new TheanoTransform object, depending
+    The operation returns either a new DatasetTensor or a new TheanoTransform object, depending
     on what is being operated on.
-    Transforms can be defined using a trans dictionary with any or all  of the keys:
+    Transforms can be defined using a trans dictionary with any or all of the keys:
     ['tx', 'ty', 'tz', 'rx', 'ry', 'rz', 's'] for the translations, rotations, and scale.
 
     You can also pass tr, a vector of the three translations, R, a 3x3 rotation matrix, and s, the scale factor.
-    Any of the final three override any setting in the dictionary.
+    Any of the final three override any corresponding setting in the dictionary.
     
-    If no information is provided the identity transform is returned.
+    If no information is provided an identity transform is returned.
     '''
     def __init__(self, trans=None, tr=None, R=None, s=None, full_scale = 100., translate_factor=1000., rotation_in_degrees=True):
 

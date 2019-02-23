@@ -1,5 +1,6 @@
 import numpy as np
 import theano.tensor as tt
+import theano
 from collections import namedtuple, OrderedDict
 from lib_transform import *
 
@@ -176,10 +177,8 @@ class AlignDatasetSimple(pm.Model):
             ds1,ds2 = ds1.subsets_in_common(ds2, marker=use_marker)
         else:
             ds1,ds2 = ds1.subsets_in_common(ds2)
-
         self.ds1t=ds1.to_tensors()
         self.ds2t=ds2.to_tensors()
-
         print(f'fitmap is {self.fitmap}')
         #We need a better way of defining the priors here, needs thought TODO
         #Translation variables:
@@ -214,31 +213,29 @@ class AlignDatasetSimple(pm.Model):
             tvals['s'] = pm.Normal('s', mu=100, sd=10.)
         else:
             tvals['s'] = 100.
+        self.tvals = tvals
         #Compute the transform
-        trans = TheanoTransform(trans=tvals)
+        self.trans = TheanoTransform(trans=self.tvals)
         #apply the transform
-        self.ds2tprime = trans*self.ds2t
+        self.ds2tprime = self.trans*self.ds2t
 
         #Compute the distance between the two clouds and the error on that distance
-        diff = pm.Deterministic('diff', self.ds1t.pos-self.ds2tprime.pos)
-        variance = pm.Deterministic('variance', self.ds1t.err**2+self.ds2tprime.err**2)
+        #diff = pm.Deterministic('diff', self.ds1t.pos-self.ds2tprime.pos)
+        #variance = pm.Deterministic('variance', self.ds1t.err**2+self.ds2tprime.err**2)
+        self.variance = self.ds1t.err**2+self.ds2tprime.err**2
+        self.diff =  self.ds1t.pos-self.ds2tprime.pos
 
-        #do the alignment
-        align = pm.Normal('align', mu=0, tau=1./variance, observed=diff)
+        #specify the alignment
+        align = pm.Normal('align', mu=0, tau=1./self.variance, observed=self.diff)
 
-    @classmethod
-    def distances_from_trace(self, trace):
-        varname = [v for v in trace.varnames if 'diff' in v][0]
-        diff = trace.get_values(varname)
-        return np.linalg.norm(diff, axis=1)
+    def calc_diff(self, trace=None):
+        variances = []
+        diffs = []
 
-    @classmethod
-    def distance_errors_from_trace(self, trace):
-        varname = [v for v in trace.varnames if 'variance' in v][0]
-        variance = trace.get_values(varname)
-        #This metric does not vary over the trace so we cut out the trace dimesion
-        return np.sqrt(np.linalg.norm(variance, ord=1, axis=1))[0,:]
+        diff = theano.function(inputs=list(self.tvals.values()), outputs=self.diff, on_unused_input='ignore')
+        variance = theano.function(inputs=list(self.tvals.values()), outputs=self.variance, on_unused_input='ignore')
+        for p in trace.points():
+            diffs.append(diff(**p))
+            variances.append(variance(**p))
+        return np.array(diffs), np.array(variances) 
 
-    @classmethod
-    def distances_and_errors_from_trace(self, trace):
-        return (self.distances_from_trace(trace), self.distance_errors_from_trace(trace))
