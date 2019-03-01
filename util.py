@@ -2,6 +2,7 @@ import numpy as np
 import scipy
 import pymc3 as pm
 import theano
+import json
 
 #Use these to provide a fairly weak prior on variables used to scale measured errors
 global ERROR_SCALE_BOUND
@@ -97,6 +98,13 @@ def find_credible_levels(x,y,contour_targets=[.997,.954,.683]):
     levels.append(H.max())
     return levels
 
+def load_param_file(fName):
+
+    if fName.endswith('.json'):
+        with open(fName) as f:
+            return json.load(f)
+
+#The following is not used:
 def find_op_dependencies(obj, val_list=None):
     if val_list is None:
         #top level call
@@ -113,5 +121,3 @@ def find_op_dependencies(obj, val_list=None):
         val_list = list(set(val_list))
         return [v for v in val_list if type(v)==pm.model.FreeRV]
 
-def make_theano_function(obj):
-    return theano.function(inputs=find_op_dependencies(obj), outputs=obj, on_unused_input='ignore')

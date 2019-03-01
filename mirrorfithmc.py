@@ -350,7 +350,9 @@ class AlignManyDatasets(pm.Model):
 
     def calc_diff(self, trace):
         '''Calculate the vector differences of the points and their standard deviation estimated from 
-        the errors in the datasets'''
+        the errors in the datasets
+        This is computed between all combinations of datasets.
+        '''
         sds = {}
         diffs = {} 
 
@@ -385,3 +387,72 @@ class AlignManyDatasets(pm.Model):
             sds[ckey] = np.array(sds[ckey])
 
         return (diffs, sds)
+
+class AlignMirror(pm.Model):
+    '''Find transform to apply to ds1 to match it to the mirror given py mirror_definition
+
+    fitmap can be used to specifiy which parts of the transform are used in the alignment.
+    use_marker='MARKER' will select only points with the indicated marker.
+    '''
+
+    def __init__(self, ds, mirror_definition, name=None, fitmap=None, use_marker=None, target_thickness = .2, model=None):
+        super(AlignMirror, self).__init__(name, model)
+
+        self.definition = util.load_param_file(mirror_definition)
+        self.mirror_name = self.definition["default_name"]
+        self.target_thickness = target_thickness
+
+        default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':False, 'R':True, 'mirror_std':True}
+
+        for k in fitmap:
+            if k not in default_fitmap:
+                print(f'Warning: item {k} appears in fitmap but is not used for this alignment.')
+        if fitmap is not None:
+            default_fitmap.update(fitmap)
+        self.fitmap = default_fitmap
+
+        if use_marker is not None:
+            ds = ds.subset_from_marker(use_marker)
+
+        self.ds=ds
+        self.dst=ds.to_tensors()
+
+        if name is None:
+            self.name = f'Align_{ds.name}_to_{self.mirror_name}'
+
+        print(f'{self.name} fitmap is {self.fitmap}')
+        self.tvals = util.generate_standard_transform_variables(fitmap)
+
+        self.trans = TheanoTransform(trans=self.tvals)
+
+        #apply the transform
+        self.dstprime = self.trans*self.dst
+
+        #Determine how we represent intrisic error on mirror (ie not measurement error but construction error)
+        intrinsic_error = self.definition['errors']['surface_std']
+        if fitmap['mirror_std']:
+            spread_on_error = self.definition['errors']['surface_std_error']
+            self.std_intrinsic = pm.Normal(f'std_{self.mirror_name}_intrinsic', mu=intrinsic_error, sd=spread_on_error)
+        else:
+            self.std_intrinsic = intrinsic_error
+
+        self.R = self.definition['geometry']['R']
+        if fitmap['R']:
+            self.R = pm.Normal('R', mu=self.R, sd=self.definition['errors']['deltaR'])
+
+        c = 1./self.R
+        k = self.definition['geometry']['k']
+
+        rsq = self.dstprime.pos[0]**2+self.dstprime.pos[1]**2
+        sigmarsq = (self.dstprime.err[0]**2*self.dstprime.pos[0]+self.dstprime.err[1]**2*self.dstprime.pos[1])/rsq
+        con = (c*rsq)/(1.+tt.sqrt(1.-(1.+k)*c**2.*rsq))
+        a = tt.sqrt((self.R**2. - rsq*(k + 1.))/self.R**2.)
+        mrsq = (tt.sqrt(rsq)*(3.*self.R**2.*a*(a + 1.) + rsq*(k + 1.))/(self.R**3.*a*(a + 1.)**2.))**2
+        e_rescale = 1./(mrsq+1.)
+        #store the symbolic objects for easy reconstruction
+        self.dist = (((self.dstprime.pos[2]-con)*tt.sqrt(e_rescale)) - target_thickness)
+        self.dist_error = tt.sqrt(self.dstprime.err[2]**2*e_rescale + mrsq*e_rescale*sigmarsq)
+
+        #Specify the alignment
+        align = util.generate_alignment_distribution(name='alignment', sd=tt.sqrt(self.dist_error**2+self.std_intrinsic**2), observed=self.dist)
+

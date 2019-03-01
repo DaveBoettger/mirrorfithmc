@@ -1,0 +1,5 @@
+{
+	"geometry": {"R": 4400, "k": -1},
+	"errors": {"deltaR": 5, "surface_std":40, "surface_std_error":30}, 
+	"default_name": "SA_North_Primary"
+}
