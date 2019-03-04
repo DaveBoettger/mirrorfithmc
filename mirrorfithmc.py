@@ -2,8 +2,8 @@ import numpy as np
 import theano.tensor as tt
 import theano
 from collections import namedtuple, OrderedDict
-from lib_transform import *
-import util
+from mirrorfithmc.lib_transform import *
+import mirrorfithmc.util as util
 
 class point(object):
     '''Represents a 3D point and associated gaussian error along with a label'''
@@ -143,7 +143,9 @@ class Dataset(OrderedDict):
         pass
 
     def subset_from_labels(self, labels, name_modifier=None):
-        '''Return a new dataset as a subset of self by exactly matching labels'''
+        '''Return a new dataset as a subset of self by exactly matching labels
+        Points are returned in the order labels are provided
+        '''
 
         if name_modifier is None:
             name_modifier = ''
@@ -219,7 +221,7 @@ class AlignDatasets(pm.Model):
         if name is None:
             self.name = f'Align_{ds2.name}_to_{ds1.name}'
         print(f'{self.name} fitmap is {self.fitmap}')
-        self.tvals = util.generate_standard_transform_variables(fitmap)
+        self.tvals = util.generate_standard_transform_variables(self.fitmap)
         #Error scale
         if self.fitmap['rescale_errors']:
             if error_scale1 is None:
@@ -244,7 +246,7 @@ class AlignDatasets(pm.Model):
         self.sd = tt.sqrt(((self.error_scale1*self.ds1t.err)**2+(self.error_scale2*self.ds2tprime.err)**2))
 
         #specify the alignment
-        align = util.generate_alignment_distribution('align', sd=self.sd, observed=self.diff)
+        align = util.generate_alignment_distribution('align', nu=5, sd=self.sd, observed=self.diff)
 
     def calc_diff(self, trace):
         '''Calculate the vector differences of the points and their standard deviation estimated from 
@@ -429,6 +431,7 @@ class AlignMirror(pm.Model):
         self.dstprime = self.trans*self.dst
 
         #Determine how we represent intrisic error on mirror (ie not measurement error but construction error)
+        #(This is the prior on the intrinsic error)
         intrinsic_error = self.definition['errors']['surface_std']
         if fitmap['mirror_std']:
 
@@ -454,8 +457,8 @@ class AlignMirror(pm.Model):
         #The distance and the error on the distance are converted to microns (or whatever scale is used in the transform).
         self.dist = (((self.dstprime.pos[2]-con)*tt.sqrt(e_rescale)) - target_thickness)*self.trans.translate_factor
         self.dist_error = tt.sqrt(self.dstprime.err[2]**2*e_rescale + mrsq*e_rescale*sigmarsq)*self.trans.translate_factor
-        pm.Deterministic('dist', self.dist)
-        pm.Deterministic('dist_error', self.dist_error)
+        pm.Deterministic('mirror_dist', self.dist)
+        pm.Deterministic('mirror_dist_error', self.dist_error)
         #Specify the alignment
-        align = util.generate_alignment_distribution(name='alignment', sd=tt.sqrt(self.dist_error**2+self.std_intrinsic**2), observed=self.dist)
+        align = util.generate_alignment_distribution(name='alignment', nu=5, sd=tt.sqrt(self.dist_error**2+self.std_intrinsic**2), observed=self.dist)
 

@@ -1,8 +1,4 @@
-try:
-    import mirrorfithmc as mf
-    mf.Dataset
-except:
-    import mirrorfithmc.mirrorfithmc as mf
+import mirrorfithmc.mirrorfithmc as mf
 import pymc3 as pm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,12 +19,15 @@ def load_multi_model_primary():
     with mf.AlignManyDatasets(reference=ds1, datasets=[ds2,ds3,ds4], use_marker='PRIMARY') as model:
         return model
 
+def load_model_add_reciver_points():
+    ds1 = mf.Dataset(from_file='20181208_primary_receiver.txt', name='ds20181208') 
+    theory_set = mf.Dataset(from_file='')
+
 def load_model_align_primary():
     ds1 = mf.Dataset(from_file='20181205_primary_receiver.txt', name='ds20181205')
     ds2 = mf.Dataset(from_file='20181208_primary_receiver.txt', name='ds20181208') 
-    ds3 = mf.Dataset(from_file='../PB_point_clouds/SA_NORTH_FIELD/primary_driver.txt', name='PRIMARY_DRIVER')
-    PB_point_clouds/SA_NORTH_FIELD/20171214_2
-    with mf.AlignMirror(ds=ds3, mirror_definition = './POLARBEAR/SA_Primary_North.json', use_marker='PRIMARY', fitmap={'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':False, 's':False, 'R':False, 'mirror_std':True }) as model: 
+    #ds3 = mf.Dataset(from_file='../PB_point_clouds/SA_NORTH_FIELD/primary_driver.txt', name='PRIMARY_DRIVER')
+    with mf.AlignMirror(ds=ds1, mirror_definition = './POLARBEAR/SA_Primary_North.json', use_marker='PRIMARY', fitmap={'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':False, 's':False, 'R':True, 'mirror_std':True }) as model: 
         return model
 
 def load_model_moons():
@@ -60,9 +59,9 @@ def sample(model):
 if __name__ == '__main__':
 
     #model = load_multi_model_moons()
-    #model = load_model_align_primary()
+    model = load_model_align_primary()
     #model = load_model_primary()
-    model = load_multi_model_primary()
+    #model = load_multi_model_primary()
     print(model.vars, model.test_point)
     trace = sample(model)
     pm.save_trace(trace)
