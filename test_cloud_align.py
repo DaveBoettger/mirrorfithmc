@@ -9,16 +9,26 @@ import matplotlib.pyplot as plt
 import scipy
 
 def load_model_primary():
-    ds1 = mf.dataset(from_file='20181205_primary_receiver.txt')
-    ds2 = mf.dataset(from_file='20181208_primary_receiver.txt') 
-    with mf.AlignDatasetSimple(ds1=ds1,ds2=ds2, use_marker='PRIMARY', fitmap={'tx':True, 'ty':True, 'tz':True, 's':True, 'rx':True, 'ry':True, 'rz':True}) as model: 
+    ds1 = mf.Dataset(from_file='20181205_primary_receiver.txt', name='ds20181205')
+    ds2 = mf.Dataset(from_file='20181208_primary_receiver.txt', name='ds20181208') 
+    with mf.AlignDatasets(ds1=ds1,ds2=ds2, use_marker='PRIMARY', fitmap={'tx':True, 'ty':True, 'tz':True, 's':True, 'rx':True, 'ry':True, 'rz':True, 'rescale_errors':True}) as model: 
+        return model
+
+def load_multi_model_primary():
+    ds1 = mf.Dataset(from_file='20181205_primary_receiver.txt', name='ds20181205')
+    ds2 = mf.Dataset(from_file='20181208_primary_receiver.txt', name='ds20181208') 
+    ds3 = mf.Dataset(from_file='../PB_point_clouds/SA_NORTH_FIELD/primary_driver.txt', name='PRIMARY_DRIVER')
+    ds4 = mf.Dataset(from_file='../PB_point_clouds/SA_NORTH_FIELD/20171214_2/driveraligned_2.txt', name='ds20171214')
+
+    with mf.AlignManyDatasets(reference=ds1, datasets=[ds2,ds3,ds4], use_marker='PRIMARY') as model:
         return model
 
 def load_model_align_primary():
     ds1 = mf.Dataset(from_file='20181205_primary_receiver.txt', name='ds20181205')
     ds2 = mf.Dataset(from_file='20181208_primary_receiver.txt', name='ds20181208') 
-
-    with mf.AlignMirror(ds=ds1, mirror_definition = './POLARBEAR/SA_Primary_North.json', use_marker='PRIMARY', fitmap={'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':False, 's':False, 'R':True, 'mirror_std':True }) as model: 
+    ds3 = mf.Dataset(from_file='../PB_point_clouds/SA_NORTH_FIELD/primary_driver.txt', name='PRIMARY_DRIVER')
+    PB_point_clouds/SA_NORTH_FIELD/20171214_2
+    with mf.AlignMirror(ds=ds3, mirror_definition = './POLARBEAR/SA_Primary_North.json', use_marker='PRIMARY', fitmap={'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':False, 's':False, 'R':False, 'mirror_std':True }) as model: 
         return model
 
 def load_model_moons():
@@ -42,15 +52,17 @@ def find_map(model):
 def sample(model):
 
     with model as model: 
-        #trace = pm.sample(2000, tune=15500, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .99, 'max_treedepth': 25}) 
-        trace = pm.sample(2000, tune=5000, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}) 
+        trace = pm.sample(2000, tune=5500, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}) 
+        #trace = pm.sample(2000, tune=5500, init = 'jitter+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}) 
 
-    return trace
+        return trace
 
 if __name__ == '__main__':
 
     #model = load_multi_model_moons()
-    model = load_model_align_primary()
+    #model = load_model_align_primary()
+    #model = load_model_primary()
+    model = load_multi_model_primary()
     print(model.vars, model.test_point)
     trace = sample(model)
     pm.save_trace(trace)

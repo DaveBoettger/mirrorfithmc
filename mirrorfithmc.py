@@ -281,7 +281,7 @@ class AlignManyDatasets(pm.Model):
     reference is a single dataset to which does not move. All others will be aligned to this.
     datasets is a list of datasets, all of which will be aligned to reference and to each other at the reference location.
     '''
-    def __init__(self, reference, datasets, name=None, fitmaps=None, select_subsets=True, use_marker=None, scale_ref_error=True, model=None):
+    def __init__(self, reference, datasets, name=None, fitmaps=None, select_subsets=True, use_marker=None, scale_ref_error=False, model=None):
         super(AlignManyDatasets, self).__init__(name, model)
 
         if name is None:
@@ -300,7 +300,7 @@ class AlignManyDatasets(pm.Model):
         self.datasets = datasets
 
         #Build as many fitmaps as we have datasets
-        default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':True, 'rescale_errors':True}
+        default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':True, 'rescale_errors':False}
         if fitmaps is not None:
             if type(fitmaps) == 'dict':
                 self.fitmaps = [default_fitmap.copy().update(fitmaps)]*len(datasets)
@@ -431,8 +431,10 @@ class AlignMirror(pm.Model):
         #Determine how we represent intrisic error on mirror (ie not measurement error but construction error)
         intrinsic_error = self.definition['errors']['surface_std']
         if fitmap['mirror_std']:
-            spread_on_error = self.definition['errors']['surface_std_error']
-            self.std_intrinsic = pm.Normal(f'std_{self.mirror_name}_intrinsic', mu=intrinsic_error, sd=spread_on_error)
+
+            std_bound = pm.Bound(pm.Normal,lower=0.0)
+            spread_on_error = self.definition['errors']['surface_std_error'] #this parameter defines uncertainty on the intrinsic standard deviation
+            self.std_intrinsic = std_bound(f'std_{self.mirror_name}_intrinsic', mu=intrinsic_error, sd=spread_on_error)
         else:
             self.std_intrinsic = intrinsic_error
 
@@ -444,15 +446,16 @@ class AlignMirror(pm.Model):
         k = self.definition['geometry']['k']
 
         rsq = self.dstprime.pos[0]**2+self.dstprime.pos[1]**2
-        sigmarsq = (self.dstprime.err[0]**2*self.dstprime.pos[0]+self.dstprime.err[1]**2*self.dstprime.pos[1])/rsq
-        con = (c*rsq)/(1.+tt.sqrt(1.-(1.+k)*c**2.*rsq))
-        a = tt.sqrt((self.R**2. - rsq*(k + 1.))/self.R**2.)
-        mrsq = (tt.sqrt(rsq)*(3.*self.R**2.*a*(a + 1.) + rsq*(k + 1.))/(self.R**3.*a*(a + 1.)**2.))**2
+        sigmarsq = ((self.dstprime.err[0]*self.dstprime.pos[0])**2+(self.dstprime.err[1]*self.dstprime.pos[1])**2)/rsq
+        con = (c*rsq)/(1.+tt.sqrt(1.-(1.+k)*c**2*rsq))
+        a = tt.sqrt((self.R**2. - rsq*(k + 1.))/self.R**2)
+        mrsq = (tt.sqrt(rsq)*(2.*self.R**2.*a*(a + 1.) + rsq*(k + 1.))/(self.R**3.*a*(a + 1.)**2.))**2
         e_rescale = 1./(mrsq+1.)
-        #store the symbolic objects for easy reconstruction
-        self.dist = (((self.dstprime.pos[2]-con)*tt.sqrt(e_rescale)) - target_thickness)
-        self.dist_error = tt.sqrt(self.dstprime.err[2]**2*e_rescale + mrsq*e_rescale*sigmarsq)
-
+        #The distance and the error on the distance are converted to microns (or whatever scale is used in the transform).
+        self.dist = (((self.dstprime.pos[2]-con)*tt.sqrt(e_rescale)) - target_thickness)*self.trans.translate_factor
+        self.dist_error = tt.sqrt(self.dstprime.err[2]**2*e_rescale + mrsq*e_rescale*sigmarsq)*self.trans.translate_factor
+        pm.Deterministic('dist', self.dist)
+        pm.Deterministic('dist_error', self.dist_error)
         #Specify the alignment
         align = util.generate_alignment_distribution(name='alignment', sd=tt.sqrt(self.dist_error**2+self.std_intrinsic**2), observed=self.dist)
 
