@@ -2,8 +2,12 @@ import numpy as np
 import theano.tensor as tt
 import theano
 from collections import namedtuple, OrderedDict
-from mirrorfithmc.lib_transform import *
-import mirrorfithmc.util as util
+try:
+    from mirrorfithmc.lib_transform import *
+    import mirrorfithmc.util as util
+except:
+    from lib_transform import *
+    import util as util
 
 class point(object):
     '''Represents a 3D point and associated gaussian error along with a label'''
@@ -204,7 +208,7 @@ class AlignDatasets(pm.Model):
     '''
     def __init__(self, ds1, ds2, name=None, fitmap=None, select_subsets=True, use_marker=None, error_scale1=None, error_scale2=None, model=None):
         super(AlignDatasets, self).__init__(name, model)
-        default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':True, 'rescale_errors':True}
+        default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':True, 'rescale_errors':False}
         if fitmap is not None:
             default_fitmap.update(fitmap)
         self.fitmap = default_fitmap
@@ -246,7 +250,7 @@ class AlignDatasets(pm.Model):
         self.sd = tt.sqrt(((self.error_scale1*self.ds1t.err)**2+(self.error_scale2*self.ds2tprime.err)**2))
 
         #specify the alignment
-        align = util.generate_alignment_distribution('align', nu=5, sd=self.sd, observed=self.diff)
+        align = util.generate_alignment_distribution('align', sd=self.sd, observed=self.diff)
 
     def calc_diff(self, trace):
         '''Calculate the vector differences of the points and their standard deviation estimated from 

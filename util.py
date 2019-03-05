@@ -38,15 +38,15 @@ def generate_standard_transform_variables(fitmap):
         #Translation variables:
         tvals = {}
         if fitmap['tx']:
-            tvals['tx'] = pm.Normal('tx', mu=0, sd=10000.)
+            tvals['tx'] = pm.Normal('tx', mu=0, sd=1500000.)
         else:
             tvals['tx'] = 0.
         if fitmap['ty']:
-            tvals['ty'] = pm.Normal('ty', mu=0, sd=10000.)
+            tvals['ty'] = pm.Normal('ty', mu=0, sd=1500000.)
         else:
             tvals['ty'] = 0.
         if fitmap['tz']:
-            tvals['tz'] = pm.Normal('tz', mu=0, sd=10000.)
+            tvals['tz'] = pm.Normal('tz', mu=0, sd=1500000.)
         else:
             tvals['tz'] = 0.
         #Rotation variables:

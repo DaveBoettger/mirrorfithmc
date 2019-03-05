@@ -1,4 +1,8 @@
-import mirrorfithmc.mirrorfithmc as mf
+try:
+    import mirrorfithmc.mirrorfithmc as mf
+except:
+    import mirrorfithmc as mf
+
 import pymc3 as pm
 import matplotlib.pyplot as plt
 
@@ -11,7 +15,7 @@ def add_receiver_theory_points(ds, theory_ds='POLARBEAR/pb2a_cryostat_japan_meas
     theoryds = mf.Dataset(from_file=theory_ds, name='THEORY')
     ds, theoryds = ds.subsets_in_common(theoryds)
     with mf.AlignDatasets(ds1=ds, ds2=theoryds, fitmap={'s':False}) as model:
-        trace = pm.sample(2000, tune=5500, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}) 
+        trace = pm.sample(2000, tune=5500, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}, error_scale1=0., error_scale2=0.) 
     pm.traceplot(trace)
 if __name__ == '__main__':
     add_receiver_theory_points(ds='20181208_primary_receiver.txt')
