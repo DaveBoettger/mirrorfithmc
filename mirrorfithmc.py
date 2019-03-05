@@ -12,10 +12,21 @@ except:
 class point(object):
     '''Represents a 3D point and associated gaussian error along with a label'''
     
-    def __init__(self):
-        self.pos = np.zeros(3)
-        self.label = ""
-        self.err = np.zeros(3)
+    def __init__(self, pos=None, err=None, label=None):
+        if pos is None:
+            self.pos = np.zeros(3)
+        else:
+            self.pos = np.array(pos)
+
+        if label is None:
+            self.label = 'UnnamedPoint'
+        else:
+            self.label = label
+
+        if err is None:
+            self.err = np.zeros(3)
+        else:
+            self.err = err
 
     def read_ph_file_line(self,line):
         ll=line.split()
@@ -36,7 +47,6 @@ class point(object):
         p.pos = self.pos.copy()
         p.err = self.err.copy()
         p.label = self.label
-        p.type = self.type
         return p
 
 class Dataset(OrderedDict):
@@ -50,10 +60,6 @@ class Dataset(OrderedDict):
 
         super().__init__()
 
-        if name is None:
-            self.name = 'Unnamed'
-        else:
-            self.name = name
 
         if markers is not None:
             self.markers = markers
@@ -65,14 +71,27 @@ class Dataset(OrderedDict):
                 self.add_point(point)
         if from_file is not None:
             self.read_data_file(from_file)
+
+        if name is None:
+            try:
+                self.name #may have been named in file
+            except:
+                self.name = 'Unnamed'
+        else:
+            self.name = name
         
-    def copy(self):
-        c = Dataset()
+    def copy(self, name_modifier=''):
+        c = Dataset(name=f'{self.name}{name_modifier}')
         for p in self.values(): c.add_point(p.copy())
         return c
         
     def add_point(self,point):
-        self[point.label] = point
+        try:
+            self[point.label]
+        except KeyError:
+            self[point.label] = point
+        else:
+            raise ValueError(f'Label "{point.label}" already exists!')
 
     def remove_point(self, point):
         del self[point.label]
@@ -83,6 +102,8 @@ class Dataset(OrderedDict):
                 if l[0] == '#':
                     if l[1] == '*':
                         self.markers.append(l[2:].strip().upper())
+                    if l[1:].startswith('@NAME='):
+                        self.name = l.split('=')[1]
                 else:
                     p = point()
                     p.read_ph_file_line(l)
@@ -143,8 +164,19 @@ class Dataset(OrderedDict):
         err = self.to_err_tensor()
         return DatasetTensors(pos=self.to_tensor(), err=err, serr=err)
 
-    def new_from_tensors(self):
+    def remake_from_tensors(self):
         pass
+
+    def remake_from_arrays(self, arrays, name_modifier=''):
+
+        pos = arrays.pos
+        serr = arrays.serr
+        labels = self.keys()
+        new_ds = Dataset(name=f'{self.name}{name_modifier}')
+        for p, e, l in zip(pos, serr, labels):
+            new_point = point(pos=p, err=e, label=l)
+            new_ds.add_point(new_point)
+        return new_ds
 
     def subset_from_labels(self, labels, name_modifier=None):
         '''Return a new dataset as a subset of self by exactly matching labels
@@ -196,6 +228,18 @@ class Dataset(OrderedDict):
 
         return tuple([ds.subset_from_labels(common_labels, name_modifier=name_modifier) for ds in datasets])
 
+    def get_center(self):
+        '''Find the mean of all the points.
+
+        This should eventually have the option of weighting by error.
+        '''
+        ar = self.to_array().T
+        return np.array([np.mean(ar[0,:]), np.mean(ar[1,:]),np.mean(ar[2,:])])
+
+    def get_spread(self):
+        ar = self.to_array().T
+        return np.array([np.max(ar[0,:])-np.min(ar[0,:]),np.max(ar[1,:])-np.min(ar[1,:]),np.max(ar[2,:])-np.min(ar[2,:])])
+
 class AlignDatasets(pm.Model):
     '''Find transform to apply to ds1 to match it to ds2.
 
@@ -206,7 +250,7 @@ class AlignDatasets(pm.Model):
     error_scale1 is used to scale the errors in dataset 1 if error rescaling is turned on in the fitmap. A default will be generated if not provided.
     error_scale2 is used to scale the errors in dataset 2 if error rescaling is turned on in the fitmap. A default will be generated if not provided.
     '''
-    def __init__(self, ds1, ds2, name=None, fitmap=None, select_subsets=True, use_marker=None, error_scale1=None, error_scale2=None, model=None):
+    def __init__(self, ds1, ds2, name=None, fitmap=None, select_subsets=True, use_marker=None, rotate_from_center = True, error_scale1=None, error_scale2=None, model=None):
         super(AlignDatasets, self).__init__(name, model)
         default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':True, 'rescale_errors':False}
         if fitmap is not None:
@@ -224,8 +268,17 @@ class AlignDatasets(pm.Model):
         self.ds2t=ds2.to_tensors()
         if name is None:
             self.name = f'Align_{ds2.name}_to_{ds1.name}'
+
+        #build up some simple priors
+        center_diff = ds1.get_center()-ds2.get_center()
+        max_spread = ds1.get_spread()+ds2.get_spread()
+        if not rotate_from_center:
+            max_spread += np.sum(np.abs(ds1.get_center()))
+        mus = {'tx': center_diff[0], 'ty': center_diff[1], 'tz': center_diff[2]}
+        sds = {'tx': max_spread[0], 'ty': max_spread[1], 'tz': max_spread[2]}
         print(f'{self.name} fitmap is {self.fitmap}')
-        self.tvals = util.generate_standard_transform_variables(self.fitmap)
+        self.tvals = util.generate_standard_transform_variables(self.fitmap, mus=mus, sds=sds)
+        print(f'TVALS are: {self.tvals}')
         #Error scale
         if self.fitmap['rescale_errors']:
             if error_scale1 is None:
@@ -242,6 +295,12 @@ class AlignDatasets(pm.Model):
             self.error_scale2 = 1.
         #Compute the transform
         self.trans = TheanoTransform(trans=self.tvals)
+
+        if rotate_from_center:
+            #find center of ds2
+            ds2center = self.ds2.get_center()
+            #rotate from center
+            self.trans.reset_rotation_center(ds2center)
         #apply the transform
         self.ds2tprime = self.trans*self.ds2t
 
@@ -263,7 +322,25 @@ class AlignDatasets(pm.Model):
         for p in trace.points():
             diffs.append(diff(**p))
             sds.append(sd(**p))
-        return np.array(diffs), np.sqrt(np.array(sds))
+        return np.array(diffs).T, np.sqrt(np.array(sds)).T
+
+    def use_transform_trace(self, other, trace):
+        '''Builds functions that apply the transform from this fit to a DatasetTensors object.
+        Return signed errors.
+        '''
+
+        fvals = self.trans*other
+
+        posval = theano.function(inputs=list(self.vars), outputs=fvals.pos, on_unused_input='ignore')
+        errval = theano.function(inputs=list(self.vars), outputs=fvals.serr, on_unused_input='ignore')
+
+        poses = []
+        errors = []
+        for p in trace.points():
+            poses.append(posval(**p).T)
+            errors.append(errval(**p).T)
+
+        return np.array(poses), np.array(errors)
 
     def mean_transform(self, trace):
         '''

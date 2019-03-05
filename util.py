@@ -3,6 +3,10 @@ import scipy
 import pymc3 as pm
 import theano
 import json
+try:
+    import mirrorfithmc.lib_transform as lt
+except:
+    import lib_transform as lt
 
 #Use these to provide a fairly weak prior on variables used to scale measured errors
 global ERROR_SCALE_BOUND
@@ -33,41 +37,45 @@ def generate_alignment_distribution(name, sd, observed, nu=np.inf):
 
     return align
 
-def generate_standard_transform_variables(fitmap):
+def generate_standard_transform_variables(fitmap=None, mus=None, sds=None):
         #We need a better way of defining the priors here, needs thought TODO
         #Translation variables:
-        tvals = {}
-        if fitmap['tx']:
-            tvals['tx'] = pm.Normal('tx', mu=0, sd=1500000.)
-        else:
-            tvals['tx'] = 0.
-        if fitmap['ty']:
-            tvals['ty'] = pm.Normal('ty', mu=0, sd=1500000.)
-        else:
-            tvals['ty'] = 0.
-        if fitmap['tz']:
-            tvals['tz'] = pm.Normal('tz', mu=0, sd=1500000.)
-        else:
-            tvals['tz'] = 0.
+        translate_keys = ['tx', 'ty', 'tz']
         #Rotation variables:
-        if fitmap['rx']:
-            tvals['rx'] = pm.Normal('rx',mu=0, sd=200)
-        else:
-            tvals['rx'] = 0.
-        if fitmap['ry']:
-            tvals['ry'] = pm.Normal('ry',mu=0, sd=200)
-        else:
-            tvals['ry'] = 0.
-        if fitmap['rz']:
-            tvals['rz'] = pm.Normal('rz',mu=0, sd=200)
-        else:
-            tvals['rz'] = 0.
-        #Scale
-        if fitmap['s']:
-            tvals['s'] = pm.Normal('s', mu=100, sd=10.)
-        else:
-            tvals['s'] = 100.
+        rotate_keys = ['rx', 'ry', 'rz']
+        #Scale variable:
+        scale_keys = ['s']
 
+        transfactor = lt.TheanoTransform.translate_factor
+        fullscale = lt.TheanoTransform.full_scale
+        rotatescale = lt.TheanoTransform.rotation_scale
+        default_fitmap = {'tx':False,'ty':False,'tz':False,'rx':False,'ry':False,'rz':False,'s':False}
+        default_means = {'tx':0., 'ty':0.,'tz':0.,'rx':0.,'ry':0., 'rz':0., 's':1.}
+        default_stds = {'tx':10,'ty':10,'tz':10,'rx':np.pi,'ry':np.pi, 'rz':np.pi, 's':.1}
+
+        if fitmap is not None:
+            default_fitmap.update(fitmap)
+        if mus is not None:
+            default_means.update(mus)
+        if sds is not None:
+            default_stds.update(sds)
+
+        tvals = {}
+        for k in translate_keys:
+            if default_fitmap[k]:
+                tvals[k] = pm.Normal(k, mu=default_means[k]*transfactor, sd=default_stds[k]*transfactor)
+            else: 
+                tvals[k] = default_means[k]*transfactor
+        for k in rotate_keys:
+            if default_fitmap[k]:
+                tvals[k] = pm.Normal(k, mu=default_means[k]*rotatescale, sd=default_stds[k]*rotatescale)
+            else: 
+                tvals[k] = default_means[k]*rotatescale
+        for k in scale_keys:
+            if default_fitmap[k]:
+                tvals[k] = pm.Normal(k, mu=default_means[k]*fullscale, sd=default_stds[k]*fullscale)
+            else: 
+                tvals[k] = default_means[k]*fullscale
         return tvals
 
 def find_credible_levels(x,y,contour_targets=[.997,.954,.683]):

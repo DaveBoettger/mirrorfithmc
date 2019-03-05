@@ -10,16 +10,25 @@ DatasetArrays = namedtuple('DatasetArrays', ['pos', 'err', 'serr'])
 #DatasetTenors are named tuples of two Theano tensors (the position and error tensors for a Dataset).
 DatasetTensors = namedtuple('DatasetTensors', ['pos', 'err', 'serr'])
 
-def theano_rot(rx,ry,rz, rescale=True):
+def arrays_to_tensors(self, arrays):
+
+    #err = self.to_err_tensor()
+    #return DatasetTensors(pos=self.to_tensor(), err=err, serr=err)
+    if type(arrays) == np.ndarray:
+        return tt._shared(arrays.T)
+
+    elif type(arrays) == DatasetArrays:
+        return DatasetTensors(arrays_to_tensors(arrays.pos), arrays_to_tensors(arrays.err), arrays_to_tensors(serr))
+
+def theano_rot(rx,ry,rz, rescale=180./np.pi):
     '''Return a theano tensor representing a rotation 
     matrix using specified rotation angles rx,ry, rz
     If rescale is True, treat the input angles as degrees.
     '''
 
-    if rescale:
-        rx = np.pi/180. * (rx)
-        ry = np.pi/180. * (ry)
-        rz = np.pi/180. * (rz)
+    rx = (rx)/rescale
+    ry = (ry)/rescale
+    rz = (rz)/rescale
 
     sx = tt.sin(rx)
     sy = tt.sin(ry)
@@ -50,13 +59,15 @@ class TheanoTransform():
     
     If no information is provided an identity transform is returned.
     '''
-    def __init__(self, trans=None, tr=None, R=None, s=None, full_scale = 100., translate_factor=1000., rotation_in_degrees=True):
+    #translating by translate_factor units is equivalent to 1 data unit
+    #typically this will be 1000 microns to 1 mm
+    translate_factor = 1000.
+    full_scale = 100.
+    rotation_scale = 180./np.pi
 
-        self.full_scale = full_scale
-        #translating by translate_factor units is equivalent to 1 data unit
-        #typically this will be 1000 microns to 1 mm
-        self.translate_factor = translate_factor 
-        self.rotation_in_degrees = rotation_in_degrees
+    def __init__(self, trans=None, tr=None, R=None, s=None, rotation_center=None):
+
+        self.reset_rotation_center(rotation_center)
         #These reparameterizations help with the stability of the MCMC samples
         self._trans = trans
         self._tr = tr
@@ -64,6 +75,16 @@ class TheanoTransform():
         self._s = s
 
         self._generate()
+
+    def reset_rotation_center(self, center=None):
+        '''Set the origin of the rotation.
+        If no center is provided, it is reset to the coordinate system origin.
+        '''
+
+        if center is None:
+            self._rot_center = np.array([[0., 0., 0.]]).T 
+        else:
+            self._rot_center = np.array([center]).T
 
     def __repr__(self):
         '''Get a string representation of the tensor, trying to make it a useful one
@@ -111,7 +132,7 @@ class TheanoTransform():
                     pass
 
         if self._R is None:
-            self._R = theano_rot(rx=trans['rx'], ry=trans['ry'], rz=trans['rz'], rescale = self.rotation_in_degrees)
+            self._R = theano_rot(rx=trans['rx'], ry=trans['ry'], rz=trans['rz'], rescale = self.rotation_scale)
 
         if self._tr is None:
             self._tr = tt.stacklists([trans['tx'],trans['ty'],trans['tz']])
@@ -124,18 +145,20 @@ class TheanoTransform():
         
         if type(other) == DatasetTensors:
             pos = other.pos
-            #In the function we treat error as a signed quantity to get the rotation correct,
+            #In this function we treat error as a signed quantity to get the rotation correct,
             #but we set the actual .err value of the object we return to be
             #the absolute value of this since it represents the standard deviation of a Gaussian
             #There is probably a nicer algebraic way to do this (???) TODO
             err = other.serr
-            new_pos = (self._s/self.full_scale)*tt.dot(self._R,pos)+(1./self.translate_factor)*self._tr[:,np.newaxis]
+            new_pos = (self._s/self.full_scale)*tt.dot(self._R,(pos-self._rot_center))+self._rot_center+(1./self.translate_factor)*self._tr[:,np.newaxis]
             new_err = ((self._s/self.full_scale)*tt.dot(self._R,err))
 
             #note Theano appropriately overloads the normal abs operator to work with their tensors
             return DatasetTensors(pos=new_pos, err=abs(new_err), serr=new_err)
 
         elif type(other) == TheanoTransform:
+            if np.sum(self._rot_center==0.)!=3 or np.sum(other._rot_center==0.)!=3:
+                raise ValueError('Transform composition is not supported when the rotation center is not the coordinate system origin.')
             #Apply to other transform and return a new transform equivalent to successivly applying the two transforms 
             new_tr = ((self._tr/self.translate_factor) + (self._s/self.full_scale)*tt.dot(self._R, (other._tr/other.translate_factor)))*self.translate_factor
             new_R = tt.dot(self._R, other._R)
