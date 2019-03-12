@@ -111,6 +111,12 @@ class Dataset(OrderedDict):
                         p.label = "TARGET_%d"%(self.ntarget+1)
                     self.add_point(p)
 
+    def write_data_file(self, filename):
+        with open(filename, 'w') as f:
+            f.write(f'@NAME={self.name}\n')
+            for p in self.values():
+                f.write(f'{p.label}\t{p.pos[0]} {p.pos[1]} {p.pos[2]} {p.err[0]} {p.err[1]} {p.err[2]}\n')
+
     def __getattr__(self, name):
 
         if name == 'markers':

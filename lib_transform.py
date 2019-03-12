@@ -23,7 +23,7 @@ def arrays_to_tensors(self, arrays):
 def theano_rot(rx,ry,rz, rescale=180./np.pi):
     '''Return a theano tensor representing a rotation 
     matrix using specified rotation angles rx,ry, rz
-    If rescale is True, treat the input angles as degrees.
+    Rescale can be used to change the angular units to i.e. degrees.
     '''
 
     rx = (rx)/rescale
@@ -36,9 +36,9 @@ def theano_rot(rx,ry,rz, rescale=180./np.pi):
     cx = tt.cos(rx)
     cy = tt.cos(ry)
     cz = tt.cos(rz)
-    Rx = [[1,0,0],[0,cx,-sx],[0,sx,cx]]
-    Ry = [[cy,0,sy],[0,1,0],[-sy,0,cy]]
-    Rz = [[cz,-sz,0],[sz,cz,0],[0,0,1]]
+    Rx = [[1.,0.,0.],[0.,cx,-sx],[0.,sx,cx]]
+    Ry = [[cy,0.,sy],[0.,1.,0.],[-sy,0.,cy]]
+    Rz = [[cz,-sz,0.],[sz,cz,0.],[0.,0.,1.]]
 
 
     Rxt = tt.stacklists(Rx)
