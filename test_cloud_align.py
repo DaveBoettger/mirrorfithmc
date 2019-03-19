@@ -29,8 +29,9 @@ def load_model_add_reciver_points():
 def load_model_align_primary():
     ds1 = mf.Dataset(from_file='20181205_primary_receiver.txt', name='ds20181205')
     ds2 = mf.Dataset(from_file='20181208_primary_receiver.txt', name='ds20181208') 
+    ds3 = mf.Dataset(from_file='/home/dave/dev/PB/Photogrammetry_20181119/Photogrammetry/PB_point_clouds/COSPOL/20190319/REFLECTORAcheckout.txt')
     #ds3 = mf.Dataset(from_file='../PB_point_clouds/SA_NORTH_FIELD/primary_driver.txt', name='PRIMARY_DRIVER')
-    with mf.AlignMirror(ds=ds1, mirror_definition = './POLARBEAR/SA_Primary_North.json', use_marker='PRIMARY', fitmap={'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':False, 's':False, 'R':True, 'mirror_std':True }) as model: 
+    with mf.AlignMirror2(ds=ds1, mirror_definition = './POLARBEAR/SA_Primary_North.json', use_marker='PRIMARY', fitmap={'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':False, 's':False, 'R':True, 'mirror_std':True }) as model: 
         return model
 
 def load_model_moons():
@@ -54,7 +55,7 @@ def find_map(model):
 def sample(model):
 
     with model as model: 
-        trace = pm.sample(2000, tune=5500, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}) 
+        trace = pm.sample(2000, tune=800, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}) 
         #trace = pm.sample(2000, tune=5500, init = 'jitter+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}) 
 
         return trace
@@ -68,3 +69,5 @@ if __name__ == '__main__':
     print(model.vars, model.test_point)
     trace = sample(model)
     pm.save_trace(trace)
+    pm.traceplot(trace)
+    plt.show()

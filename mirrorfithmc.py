@@ -5,9 +5,11 @@ from collections import namedtuple, OrderedDict
 try:
     from mirrorfithmc.lib_transform import *
     import mirrorfithmc.util as util
+    import mirrorfithmc.mirror_geometry as geometry
 except:
     from lib_transform import *
     import util as util
+    import mirror_geometry as geometry
 
 class point(object):
     '''Represents a 3D point and associated gaussian error along with a label'''
@@ -544,6 +546,68 @@ class AlignMirror(pm.Model):
         #The distance and the error on the distance are converted to microns (or whatever scale is used in the transform).
         self.dist = (((self.dstprime.pos[2]-con)*tt.sqrt(e_rescale)) - target_thickness)*self.trans.translate_factor
         self.dist_error = tt.sqrt(self.dstprime.err[2]**2*e_rescale + mrsq*e_rescale*sigmarsq)*self.trans.translate_factor
+        pm.Deterministic('mirror_dist', self.dist)
+        pm.Deterministic('mirror_dist_error', self.dist_error)
+        #Specify the alignment
+        align = util.generate_alignment_distribution(name='alignment', nu=5, sd=tt.sqrt(self.dist_error**2+self.std_intrinsic**2), observed=self.dist)
+
+class AlignMirror2(pm.Model):
+    '''Find transform to apply to ds1 to match it to the mirror given py mirror_definition
+
+    fitmap can be used to specifiy which parts of the transform are used in the alignment.
+    use_marker='MARKER' will select only points with the indicated marker.
+    '''
+
+    def __init__(self, ds, mirror_definition, name=None, fitmap=None, use_marker=None, target_thickness = .2, model=None):
+        super(AlignMirror2, self).__init__(name, model)
+
+        self.definition = util.load_param_file(mirror_definition)
+        self.mirror_name = self.definition["default_name"]
+        self.target_thickness = target_thickness
+
+        default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':False, 'R':True, 'mirror_std':True}
+
+        for k in fitmap:
+            if k not in default_fitmap:
+                print(f'Warning: item {k} appears in fitmap but is not used for this alignment.')
+        if fitmap is not None:
+            default_fitmap.update(fitmap)
+        self.fitmap = default_fitmap
+
+        if use_marker is not None:
+            ds = ds.subset_from_marker(use_marker)
+
+        self.ds=ds
+        self.dst=ds.to_tensors()
+
+        if name is None:
+            self.name = f'Align_{ds.name}_to_{self.mirror_name}'
+
+        print(f'{self.name} fitmap is {self.fitmap}')
+        self.tvals = util.generate_standard_transform_variables(fitmap)
+
+        self.trans = TheanoTransform(trans=self.tvals)
+
+        #apply the transform
+        self.dstprime = self.trans*self.dst
+
+        #Determine how we represent intrisic error on mirror (ie not measurement error but construction error)
+        #(This is the prior on the intrinsic error)
+        intrinsic_error = self.definition['errors']['surface_std']
+        if fitmap['mirror_std']:
+            std_bound = pm.Bound(pm.Normal,lower=0.0)
+            spread_on_error = self.definition['errors']['surface_std_error'] #this parameter defines uncertainty on the intrinsic standard deviation
+            self.std_intrinsic = std_bound(f'std_{self.mirror_name}_intrinsic', mu=intrinsic_error, sd=spread_on_error)
+        else:
+            self.std_intrinsic = intrinsic_error
+
+        self.R = self.definition['geometry']['R']
+        if fitmap['R']:
+            self.R = pm.Normal('R', mu=self.R, sd=self.definition['errors']['deltaR'])
+
+        self.k = self.definition['geometry']['k']
+
+        self.dist, self.dist_error = geometry.zProjDistError(self.dstprime, self.R, self.k, translate_factor=self.trans.translate_factor, target_thickness=target_thickness) 
         pm.Deterministic('mirror_dist', self.dist)
         pm.Deterministic('mirror_dist_error', self.dist_error)
         #Specify the alignment

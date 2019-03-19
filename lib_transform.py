@@ -62,6 +62,7 @@ class TheanoTransform():
     #translating by translate_factor units is equivalent to 1 data unit
     #typically this will be 1000 microns to 1 mm
     translate_factor = 1000.
+    #translate_factor = 100.
     full_scale = 100.
     rotation_scale = 180./np.pi
 
