@@ -78,6 +78,14 @@ def generate_standard_transform_variables(fitmap=None, mus=None, sds=None):
                 tvals[k] = default_means[k]*fullscale
         return tvals
 
+def update_fitmap(fitmap, default_fitmap):
+    for k in fitmap:
+        if k not in default_fitmap:
+            print(f'Warning: item {k} appears in fitmap but is not used for this alignment.')
+    if fitmap is not None:
+        default_fitmap.update(fitmap)
+    return default_fitmap
+
 def find_credible_levels(x,y,contour_targets=[.997,.954,.683]):
     '''Adapted from https://stackoverflow.com/questions/35225307/set-confidence-levels-in-seaborn-kdeplot'''
 

@@ -558,7 +558,7 @@ class AlignMirror2(pm.Model):
     use_marker='MARKER' will select only points with the indicated marker.
     '''
 
-    def __init__(self, ds, mirror_definition, name=None, fitmap=None, use_marker=None, target_thickness = .2, model=None):
+    def __init__(self, ds, mirror_definition, name=None, fitmap=None, use_marker=None, use_errors=False, target_thickness = .2, model=None):
         super(AlignMirror2, self).__init__(name, model)
 
         self.definition = util.load_param_file(mirror_definition)
@@ -567,16 +567,10 @@ class AlignMirror2(pm.Model):
 
         default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':False, 'R':True, 'mirror_std':True}
 
-        for k in fitmap:
-            if k not in default_fitmap:
-                print(f'Warning: item {k} appears in fitmap but is not used for this alignment.')
-        if fitmap is not None:
-            default_fitmap.update(fitmap)
-        self.fitmap = default_fitmap
+        self.fitmap = util.update_fitmap(fitmap, default_fitmap)
 
         if use_marker is not None:
             ds = ds.subset_from_marker(use_marker)
-
         self.ds=ds
         self.dst=ds.to_tensors()
 
@@ -585,7 +579,6 @@ class AlignMirror2(pm.Model):
 
         print(f'{self.name} fitmap is {self.fitmap}')
         self.tvals = util.generate_standard_transform_variables(fitmap)
-
         self.trans = TheanoTransform(trans=self.tvals)
 
         #apply the transform
@@ -607,9 +600,17 @@ class AlignMirror2(pm.Model):
 
         self.k = self.definition['geometry']['k']
 
-        self.dist, self.dist_error = geometry.zProjDistError(self.dstprime, self.R, self.k, translate_factor=self.trans.translate_factor, target_thickness=target_thickness) 
+        if use_errors:
+            self.dist, self.disterrors = geometry.z_proj_dist_error(self.dstprime, self.R, self.k, translate_factor=self.trans.translate_factor, target_thickness=target_thickness) 
+            pm.Deterministic('mirror_dist_error', self.dist_error)
+        else:
+            self.dist = geometry.z_proj_dist_error(self.dstprime, self.R, self.k, return_error=False, translate_factor=self.trans.translate_factor, target_thickness=target_thickness) 
+        
         pm.Deterministic('mirror_dist', self.dist)
-        pm.Deterministic('mirror_dist_error', self.dist_error)
+
         #Specify the alignment
-        align = util.generate_alignment_distribution(name='alignment', nu=5, sd=tt.sqrt(self.dist_error**2+self.std_intrinsic**2), observed=self.dist)
+        if use_errors:
+            self.align = util.generate_alignment_distribution(name='alignment', nu=5, sd=tt.sqrt(self.dist_error**2+self.std_intrinsic**2), observed=self.dist)
+        else:
+            self.align = util.generate_alignment_distribution(name='alignment', nu=5, sd=self.std_intrinsic, observed=self.dist)
 
