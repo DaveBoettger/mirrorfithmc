@@ -6,10 +6,12 @@ try:
     from mirrorfithmc.lib_transform import *
     import mirrorfithmc.util as util
     import mirrorfithmc.mirror_geometry as geometry
+    import mirrorfithmc.plotting as plotting
 except:
     from lib_transform import *
-    import util as util
     import mirror_geometry as geometry
+    import util as util
+    import plotting as plotting
 
 class point(object):
     '''Represents a 3D point and associated gaussian error along with a label'''
@@ -29,6 +31,8 @@ class point(object):
             self.err = np.zeros(3)
         else:
             self.err = err
+
+        self.metadata=None
 
     def read_ph_file_line(self,line):
         ll=line.split()
@@ -58,10 +62,12 @@ class Dataset(OrderedDict):
     prior to model creation.
     DatasetTensors should be used in loops or models.
     '''
-    def __init__(self, points=None, from_file=None, markers=None, name=None):
+    def __init__(self, points=None, from_file=None, markers=None, name=None, metadata=''):
 
         super().__init__()
 
+
+        self.metadata = metadata
 
         if markers is not None:
             self.markers = markers
@@ -71,6 +77,7 @@ class Dataset(OrderedDict):
         if points is not None:
             for point in points:
                 self.add_point(point)
+
         if from_file is not None:
             self.read_data_file(from_file)
 
@@ -105,7 +112,18 @@ class Dataset(OrderedDict):
                     if l[1] == '*':
                         self.markers.append(l[2:].strip().upper())
                     if l[1:].startswith('@NAME='):
-                        self.name = l.split('=')[1]
+                        self.name = l.split('=')[1].strip()
+                    if l[1:].startswith('@DSMETA:'):
+                        lsplit = ':'.join(l.split(':')[1:])
+                        self.metadata = lsplit
+                    if l[1:].startswith('@POINTMETA:'):
+                        lsplit = ':'.join(l.split(':')[1:]).split('=')
+                        pname = lsplit[0]
+                        pdata = '='.join(lsplit[1:])
+                        try:
+                            self[pname].metadata = pdata.strip()
+                        except KeyError:
+                            pass
                 else:
                     p = point()
                     p.read_ph_file_line(l)
@@ -115,9 +133,13 @@ class Dataset(OrderedDict):
 
     def write_data_file(self, filename):
         with open(filename, 'w') as f:
-            f.write(f'@NAME={self.name}\n')
+            f.write(f'#@NAME={self.name}\n')
+            if self.metadata != '':
+                f.write(f'#@DSMETA:{self.metadata}\n')
             for p in self.values():
                 f.write(f'{p.label}\t{p.pos[0]} {p.pos[1]} {p.pos[2]} {p.err[0]} {p.err[1]} {p.err[2]}\n')
+                if p.metadata is not None:
+                    f.write(f'#@POINTMETA:{p.label}={p.metadata}\n')
 
     def __getattr__(self, name):
 
@@ -127,7 +149,6 @@ class Dataset(OrderedDict):
             newlist = []
             self.__setattr__('markers', newlist)
             return newlist
-
         elif name == 'labels':
             return [p.label for p in self.values()]
         elif name == 'pos':
@@ -148,21 +169,21 @@ class Dataset(OrderedDict):
 
     def to_array(self):
         '''Return the positions of points in the dataset as a numpy array'''
-        return np.array(self.pos)
+        return np.array(self.pos).T
 
     def to_err_array(self):
         '''Return the errors of points in the dataset as a numpy array'''
-        return np.array(self.error)
+        return np.array(self.error).T
 
     def to_tensor(self):
         '''Return the positions of points in the dataset as a Theano tensor'''
         arr = self.to_array()
-        return tt._shared(arr.T)
+        return tt._shared(arr)
 
     def to_err_tensor(self):
         '''Return the positions of points in the dataset as a Theano tensor'''
         arr = self.to_err_array()
-        return tt._shared(arr.T)
+        return tt._shared(arr)
 
     def to_arrays(self):
         err = self.to_err_array()
@@ -177,8 +198,8 @@ class Dataset(OrderedDict):
 
     def remake_from_arrays(self, arrays, name_modifier=''):
 
-        pos = arrays.pos
-        serr = arrays.serr
+        pos = arrays.pos.T
+        serr = arrays.serr.T
         labels = self.keys()
         new_ds = Dataset(name=f'{self.name}{name_modifier}')
         for p, e, l in zip(pos, serr, labels):
@@ -193,14 +214,14 @@ class Dataset(OrderedDict):
 
         if name_modifier is None:
             name_modifier = ''
-        return Dataset(points=[self[p] for p in labels if p in self], name=f'{self.name}{name_modifier}')
+        return Dataset(points=[self[p] for p in labels if p in self], name=f'{self.name}{name_modifier}', metadata=self.metadata)
 
     def subset_from_marker(self, marker, name_modifier=None):
         '''Return a new dataset as a subset of self by matching a search string IN the point labels'''
         if name_modifier is None:
             #name_modifier = f'[{marker}]'
             name_modifier = '' 
-        return Dataset(points=[self[p] for p in self if marker in p], name=f'{self.name}{name_modifier}')
+        return Dataset(points=[self[p] for p in self if marker in p], name=f'{self.name}{name_modifier}', metadata=self.metadata)
 
     def labels_in_common(self, others, marker=None):
         '''Return a list of labels with labels in common between this dataset and others,
@@ -609,8 +630,9 @@ class AlignMirror2(pm.Model):
         pm.Deterministic('mirror_dist', self.dist)
 
         #Specify the alignment
+        use_nu=np.inf
         if use_errors:
-            self.align = util.generate_alignment_distribution(name='alignment', nu=5, sd=tt.sqrt(self.dist_error**2+self.std_intrinsic**2), observed=self.dist)
+            self.align = util.generate_alignment_distribution(name='alignment', nu=use_nu, sd=tt.sqrt(self.dist_error**2+self.std_intrinsic**2), observed=self.dist)
         else:
-            self.align = util.generate_alignment_distribution(name='alignment', nu=5, sd=self.std_intrinsic, observed=self.dist)
+            self.align = util.generate_alignment_distribution(name='alignment', nu=use_nu, sd=self.std_intrinsic, observed=self.dist)
 

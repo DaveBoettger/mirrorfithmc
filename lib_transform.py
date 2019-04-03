@@ -47,6 +47,13 @@ def theano_rot(rx,ry,rz, rescale=180./np.pi):
     full_rotation=tt.dot(Rzt,tt.dot(Ryt, Rxt))
     return full_rotation
 
+def theano_matrix2euler(R):
+    '''Return equivalent rotations (in radians) around x, y, and z axes given a rotation matrix'''
+    oz = tt.arctan2(R[1][0],R[0][0])
+    oy = tt.arctan2(-R[2][0],tt.sqrt(R[2][1]**2 + R[2][2]**2))
+    ox = tt.arctan2(R[2][1],R[2][2])
+    return (ox, oy, oz)
+
 class TheanoTransform():
     '''Define a transform object that can act on DatasetTenors and themselves via multiplication
     The operation returns either a new DatasetTensor or a new TheanoTransform object, depending
@@ -61,6 +68,7 @@ class TheanoTransform():
     '''
     #translating by translate_factor units is equivalent to 1 data unit
     #typically this will be 1000 microns to 1 mm
+    #These reparameterizations help with the stability of the MCMC samples
     translate_factor = 1000.
     #translate_factor = 100.
     full_scale = 100.
@@ -69,7 +77,6 @@ class TheanoTransform():
     def __init__(self, trans=None, tr=None, R=None, s=None, rotation_center=None):
 
         self.reset_rotation_center(rotation_center)
-        #These reparameterizations help with the stability of the MCMC samples
         self._trans = trans
         self._tr = tr
         self._R = R
@@ -159,19 +166,36 @@ class TheanoTransform():
 
         elif type(other) == TheanoTransform:
             if np.sum(self._rot_center==0.)!=3 or np.sum(other._rot_center==0.)!=3:
-                raise ValueError('Transform composition is not supported when the rotation center is not the coordinate system origin.')
+                raise NotImplementedError('Transform composition is not supported when the rotation center is not the coordinate system origin.')
             #Apply to other transform and return a new transform equivalent to successivly applying the two transforms 
             new_tr = ((self._tr/self.translate_factor) + (self._s/self.full_scale)*tt.dot(self._R, (other._tr/other.translate_factor)))*self.translate_factor
             new_R = tt.dot(self._R, other._R)
             new_s = (self._s/self.full_scale * other._s/other.full_scale)*self.full_scale
-            return TheanoTransform(tr=new_tr, R=new_R, s=new_s, full_scale=self.full_scale, translate_factor=self.translate_factor)
+            return TheanoTransform(tr=new_tr, R=new_R, s=new_s)
 
         else:
             raise NotImplementedError
 
     def __invert__(self): 
         '''Return the inverse of the translation (~t) such that t*~t is the identity'''
+        if np.sum(self._rot_center==0.)!=3:
+            raise NotImplementedError('Transform inversion is not supported when the transform center is not the origin.')
         new_R = pm.math.matrix_inverse(self._R)
         new_tr = -tt.dot(self._tr/self.translate_factor,new_R.T)/(self._s/self.full_scale)*self.translate_factor
         new_s = (1./(self._s/self.full_scale))*self.full_scale
-        return TheanoTransform(tr=new_tr, R=new_R, s=new_s, full_scale=self.full_scale, translate_factor=self.translate_factor)
+        return TheanoTransform(tr=new_tr, R=new_R, s=new_s)
+
+    def get_final_trans(self):
+        '''Return equivalent of a trans dictionary that represents the behavior of the object.
+        The point of this function is that it provides a method of extracting the 
+        transform parameters in a way that is independent of the parameters (trans, tr, or R) used 
+        to originally define the transform.
+        '''
+        if np.sum(self._rot_center==0.)!=3:
+            raise NotImplementedError('Transform parameter recovery is not supported when the transform center is not the origin.')
+        tx = self._tr[0]
+        ty = self._tr[1]
+        tz = self._tr[2]
+        rx,ry,rz = theano_matrix2euler(self._R)
+        s = self._s
+        return {'tx':tx, 'ty':ty, 'tz':tz, 'rx':rx, 'ry':ry, 'rz':rz, 's':s}

@@ -1,35 +1,19 @@
 import numpy as np
 import theano.tensor as tt
 import theano
-
-def sim_conic_z_projection(k, R, XY, sigmaDelta=0., sigmaX=0., sigmaY=0., sigmaZ=0.):
-
-    rsq = XY[0]**2+XY[1]**2
-    Rsq = R**2
-    kp1 = (k+1)
-    
-    a = rsq*(k+1)
-    c = Rsq-rsq*k
-
-    #conz gives our Z coordinates, so these will be points on the ellipse.
-    conz = rsq / (R * (np.sqrt(1-a/Rsq)+1))
-
-    #Now we need to find the normal vector at each point so we can generate the delta displacements
-    S = np.sqrt(Rsq-a)/np.sqrt(c)
-    normzero = (rsq/c)#This is the rho component of the normal vector
-    print(normzero)
-    print(S)
+try:
+    from mirrorfithmc.lib_transform import *
+except:
+    from lib_transform import *
 
 def z_proj_dist_error(tds, R, k, translate_factor=1., target_thickness=0., return_error=True, full_errors=False):
     '''Takes a point cloud DatasetTensor or DatasetArray object and mirror geometry paramters and returns the distances and errors
     from all the points in the cloud.
     '''
-    print(type(tds).__name__)
     if 'DatasetTensors' in type(tds).__name__:
         mlib = tt
     elif 'DatasetArrays' in type(tds).__name__:
         mlib = np
-
 
     if full_errors:
         Rsq = R**2
@@ -72,3 +56,42 @@ def z_proj_dist_error(tds, R, k, translate_factor=1., target_thickness=0., retur
         return dist, disterror
     else:
         return dist
+
+def sim_conic_z_projection(k, R, XY, sigmaDelta=0., sigmaX=0., sigmaY=0., sigmaZ=0., target_thickness=.2):
+
+    rsq = XY[0]**2+XY[1]**2
+    rho = np.sqrt(rsq)
+    Rsq = R**2
+    kp1 = (k+1)
+    
+    a = rsq*(k+1)
+    c = Rsq-rsq*k
+
+    #conz gives our Z coordinates, so these will be points on the ellipse.
+    conz = rsq / (R * (np.sqrt(1-a/Rsq)+1))
+
+    #Now we need to find the normal vector at each point so we can generate the delta displacements
+    #S is the z component of the normal
+    z = np.sqrt(Rsq-a)/np.sqrt(c)
+    normzero = np.sqrt(rsq/c)#This is the rho component of the normal vector
+    #We need to convert the rho component into X and Y components.
+    x = -XY[0]/rho * normzero
+    y = -XY[1]/rho * normzero
+    x[rho==0] = 0.
+    y[rho==0] = 0.
+    norm = np.array([x,y,z])
+    conic = np.array([XY[0], XY[1], conz])
+
+    #Simulate construction error by displacing along the normal
+    delta = sigmaDelta*np.random.standard_normal(size=conic.shape[1])+target_thickness
+    displaced_conic = conic+delta[np.newaxis]*norm
+
+    sx = sigmaX * np.random.standard_normal(size=conic.shape[1])
+    sy = sigmaY * np.random.standard_normal(size=conic.shape[1])
+    sz = sigmaZ * np.random.standard_normal(size=conic.shape[1])
+
+    displaced_conic[0] += sx
+    displaced_conic[1] += sy
+    displaced_conic[2] += sz
+
+    return displaced_conic, delta, [sx,sy,sz]

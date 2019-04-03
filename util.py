@@ -3,6 +3,7 @@ import scipy
 import pymc3 as pm
 import theano
 import json
+import theano.tensor as tt
 try:
     import mirrorfithmc.lib_transform as lt
 except:
@@ -120,8 +121,8 @@ def load_param_file(fName):
         with open(fName) as f:
             return json.load(f)
 
-#The following is not used:
 def find_op_dependencies(obj, val_list=None):
+    '''This can be useful for debugging'''
     if val_list is None:
         #top level call
         top_level = True
@@ -135,5 +136,25 @@ def find_op_dependencies(obj, val_list=None):
         val_list.append(obj)
     if top_level:
         val_list = list(set(val_list))
-        return [v for v in val_list if type(v)==pm.model.FreeRV]
+        freervs =  [v for v in val_list if type(v)==pm.model.FreeRV]
+        constants = [v for v in val_list if type(v)==tt.TensorConstant]
+        return {'freervs':freervs,'constants':constants}
 
+def recover_trace(val, model, trace):
+    inputs = list(model.vars)
+    inputs.extend(model.deterministics)
+    this_fun=theano.function(inputs=inputs, outputs=val, on_unused_input='ignore')
+    for p in trace.points():
+        yield this_fun(**p)
+
+def recover_dict_trace(dictionary, model, trace):
+    tlist = recover_trace(val=list(dictionary.values()), model=model, trace=trace)
+    for t in tlist:
+        yield dict(zip(dictionary.keys(),t))
+
+#def recover_dict_trace(dictionary, model, trace):
+#    inputs = list(model.vars)
+#    inputs.extend(model.deterministics)
+#    this_fun=theano.function(inputs=inputs, outputs=list(dictionary.values()), on_unused_input='ignore')
+#    for p in trace.points():
+#        yield dict(zip(dictionary.keys(),this_fun(**p)))
