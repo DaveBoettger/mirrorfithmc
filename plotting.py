@@ -4,7 +4,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import seaborn as sns
 
-def plot_dataset_3d(ds, ax=None, marker=None, color_val=None, cmap=None, vmin=None, vmax=None, dist_unit = 'mm', cbar_label='', tick_font_size=6, label_font_size=12, label_pad=None, point_size=20):
+def plot_dataset_3d(ds, ax=None, marker=None, invert_marker=False, color_val=None, cmap=None, vmin=None, vmax=None, dist_unit = 'mm', cbar_label='', tick_font_size=6, label_font_size=12, label_pad=None, point_size=20):
 
     if ax is None:
         fig = plt.figure()
@@ -32,7 +32,7 @@ def plot_dataset_3d(ds, ax=None, marker=None, color_val=None, cmap=None, vmin=No
         pos = ds.pos.eval()
     elif 'Dataset' in typename:
         if marker is not None:
-            ds = ds.subset_from_marker(marker)
+            ds = ds.subset_from_marker(marker, invert=invert_marker)
         plot_array = ds.to_arrays()
         pos = plot_array.pos
     elif type(ds) == np.ndarray:
