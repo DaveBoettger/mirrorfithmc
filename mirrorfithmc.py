@@ -543,7 +543,7 @@ class AlignMirror2(pm.Model):
             self.name = f'Align_{ds.name}_to_{self.mirror_name}'
 
         print(f'{self.name} fitmap is {self.fitmap}')
-        self.tvals = util.generate_standard_transform_variables(fitmap)
+        self.tvals = util.generate_standard_transform_variables(self.fitmap)
         self.trans = TheanoTransform(trans=self.tvals)
 
         #apply the transform
@@ -552,7 +552,7 @@ class AlignMirror2(pm.Model):
         #Determine how we represent intrisic error on mirror (ie not measurement error but construction error)
         #(This is the prior on the intrinsic error)
         intrinsic_error = self.definition['errors']['surface_std']
-        if fitmap['mirror_std']:
+        if self.fitmap['mirror_std']:
             std_bound = pm.Bound(pm.Normal,lower=0.0)
             spread_on_error = self.definition['errors']['surface_std_error'] #this parameter defines uncertainty on the intrinsic standard deviation
             self.std_intrinsic = std_bound(f'std_{self.mirror_name}_intrinsic', mu=intrinsic_error, sd=spread_on_error)
@@ -560,7 +560,7 @@ class AlignMirror2(pm.Model):
             self.std_intrinsic = intrinsic_error
 
         self.R = self.definition['geometry']['R']
-        if fitmap['R']:
+        if self.fitmap['R']:
             self.R = pm.Normal('R', mu=self.R, sd=self.definition['errors']['deltaR'])
 
         self.k = self.definition['geometry']['k']

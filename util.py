@@ -1,5 +1,4 @@
 import numpy as np
-import scipy
 import pymc3 as pm
 import theano
 import json
@@ -80,40 +79,13 @@ def generate_standard_transform_variables(fitmap=None, mus=None, sds=None):
         return tvals
 
 def update_fitmap(fitmap, default_fitmap):
-    for k in fitmap:
-        if k not in default_fitmap:
-            print(f'Warning: item {k} appears in fitmap but is not used for this alignment.')
     if fitmap is not None:
-        default_fitmap.update(fitmap)
+        for k in fitmap:
+            if k not in default_fitmap:
+                print(f'Warning: item {k} appears in fitmap but is not used for this alignment.')
+            default_fitmap.update(fitmap)
+
     return default_fitmap
-
-def find_credible_levels(x,y,contour_targets=[.997,.954,.683]):
-    '''Adapted from https://stackoverflow.com/questions/35225307/set-confidence-levels-in-seaborn-kdeplot'''
-
-    # Make a 2d normed histogram
-    H,xedges,yedges=np.histogram2d(x,y,bins=50,normed=True)
-
-    norm=H.sum() # Find the norm of the sum
-
-    # Set target levels as percentage of norm
-    targets = [norm*contour for contour in contour_targets]
-
-    # Take histogram bin membership as proportional to Likelihood
-    # This is true when data comes from a Markovian process
-    def objective(limit, target):
-        w = np.where(H>limit)
-        count = H[w]
-        return count.sum() - target
-
-    levels = []
-    # Find levels by summing histogram to objective
-    for target in targets:
-        levels.append(scipy.optimize.bisect(objective, H.min(), H.max(), args=(target,)))
-
-    # For nice contour shading with seaborn, define top level
-    levels.insert(0,H.min())
-    levels.append(H.max())
-    return levels
 
 def load_param_file(fName):
 
@@ -140,17 +112,39 @@ def find_op_dependencies(obj, val_list=None):
         constants = [v for v in val_list if type(v)==tt.TensorConstant]
         return {'freervs':freervs,'constants':constants}
 
-def recover_trace(val, model, trace):
+def trace_iterator(val, model, trace):
+    '''Returns an iterator over val that calculates val for model at each point in trace
+    val must be a Theano variable or a list of Theano variables.
+    '''
     inputs = list(model.vars)
     inputs.extend(model.deterministics)
     this_fun=theano.function(inputs=inputs, outputs=val, on_unused_input='ignore')
     for p in trace.points():
         yield this_fun(**p)
 
-def recover_dict_trace(dictionary, model, trace):
-    tlist = recover_trace(val=list(dictionary.values()), model=model, trace=trace)
+def dict_trace_iterator(dictionary, model, trace):
+    '''
+    Returns an iterator over the values in dictionary, calculating the values for model at each point in trace
+    values in the dictionary must be Theano variables.
+    '''
+    tlist = trace_iterator(val=list(dictionary.values()), model=model, trace=trace)
     for t in tlist:
         yield dict(zip(dictionary.keys(),t))
+
+def build_trace(val, model, trace):
+    pass 
+
+def build_dict_trace(dictionary, model, trace):
+    this_it = dict_trace_iterator(dictionary, model, trace)
+    this_dict={}
+    for k in dictionary:
+        this_dict[k]=[]
+    for i in this_it:
+        for k in dictionary:
+            this_dict[k].append(i[k])
+    for k in this_dict:
+        this_dict[k] = np.array(this_dict[k])
+    return this_dict
 
 #def recover_dict_trace(dictionary, model, trace):
 #    inputs = list(model.vars)

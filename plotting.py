@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import seaborn as sns
+import scipy
 
 def plot_dataset_3d(ds, ax=None, marker=None, invert_marker=False, color_val=None, cmap=None, vmin=None, vmax=None, dist_unit = 'mm', cbar_label='', tick_font_size=6, label_font_size=12, label_pad=None, point_size=20):
 
@@ -51,7 +52,7 @@ def plot_dataset_3d(ds, ax=None, marker=None, invert_marker=False, color_val=Non
 
     return ax
 
-def plot_dict_correlation(data, plot_keys=None, plot_labels=None, figsize=(15,15), tick_font_size=6, label_font_size=12, label_pad=20):
+def plot_dict_correlation(data, plot_keys=None, plot_labels=None, plot_credible_levels=False, figsize=(15,15), tick_font_size=6, label_font_size=12, label_pad=20):
     if plot_keys is None:
         plot_keys = list(data.keys())
     if plot_labels is None:
@@ -71,7 +72,13 @@ def plot_dict_correlation(data, plot_keys=None, plot_labels=None, figsize=(15,15
                 ax.set_yticks([])
                 ax.text(0.5, 0.5, f'$\sigma={np.std(data[one]):.2f}$', horizontalalignment='center', verticalalignment='center', fontsize=label_font_size, transform=ax.transAxes)
                 continue
-            ax.plot(data[two],data[one],'.')
+            if plot_credible_levels:
+                levels = find_credible_levels(data[two],data[one])
+                print('found levels')
+                sns.kdeplot(data[two],data[one], cmap='Blues',shade=True, shade_lowest=False, levels=levels, ax=ax)
+                ax.scatter(np.mean(data[two]), np.mean(data[one]),c='r')
+            else:
+                ax.plot(data[two],data[one],'.')
     return fig, axes
 
 def plot_dist(data_dict, keys=None, labels=None, shape=None, figsize=5, label_font_size=12, tick_font_size=6):
@@ -98,3 +105,31 @@ def plot_dist(data_dict, keys=None, labels=None, shape=None, figsize=5, label_fo
         ax.set_xlabel(lbl, fontsize=label_font_size)
         ax.set_ylabel('Probability Density', fontsize=label_font_size)
     return fig,axes
+
+def find_credible_levels(x,y,contour_targets=[.997,.954,.683]):
+    '''Adapted from https://stackoverflow.com/questions/35225307/set-confidence-levels-in-seaborn-kdeplot'''
+
+    # Make a 2d normed histogram
+    H,xedges,yedges=np.histogram2d(x,y,bins=50,normed=True)
+
+    norm=H.sum() # Find the norm of the sum
+
+    # Set target levels as percentage of norm
+    targets = [norm*contour for contour in contour_targets]
+
+    # Take histogram bin membership as proportional to Likelihood
+    # This is true when data comes from a Markovian process
+    def objective(limit, target):
+        w = np.where(H>limit)
+        count = H[w]
+        return count.sum() - target
+
+    levels = []
+    # Find levels by summing histogram to objective
+    for target in targets:
+        levels.append(scipy.optimize.bisect(objective, H.min(), H.max(), args=(target,)))
+
+    # For nice contour shading with seaborn, define top level
+    levels.insert(0,H.min())
+    levels.append(H.max())
+    return levels
