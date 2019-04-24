@@ -52,12 +52,15 @@ def plot_dataset_3d(ds, ax=None, marker=None, invert_marker=False, color_val=Non
 
     return ax
 
-def plot_dict_correlation(data, plot_keys=None, plot_labels=None, plot_credible_levels=False, figsize=(15,15), tick_font_size=6, label_font_size=12, label_pad=20):
+def plot_dict_correlation(data, plot_keys=None, plot_labels=None, plot_credible_levels=False, figsize=(15,15), tick_font_size=6, label_font_size=12, label_pad=20,figaxes=None, point_color='b'):
     if plot_keys is None:
         plot_keys = list(data.keys())
     if plot_labels is None:
         plot_labels = plot_keys
-    fig,axes = matplotlib.pyplot.subplots(nrows=len(plot_keys), ncols=len(plot_keys), figsize=figsize)
+    if figaxes is None:
+        fig,axes = matplotlib.pyplot.subplots(nrows=len(plot_keys), ncols=len(plot_keys), figsize=figsize)
+    else:
+        fig, axes = figaxes
     for one,lone,axone in zip(plot_keys,plot_labels,axes):
         for two,ltwo,ax in zip(plot_keys,plot_labels,axone):
             ax.tick_params(labelsize=tick_font_size)
@@ -78,7 +81,7 @@ def plot_dict_correlation(data, plot_keys=None, plot_labels=None, plot_credible_
                 sns.kdeplot(data[two],data[one], cmap='Blues',shade=True, shade_lowest=False, levels=levels, ax=ax)
                 ax.scatter(np.mean(data[two]), np.mean(data[one]),c='r')
             else:
-                ax.plot(data[two],data[one],'.')
+                ax.plot(data[two],data[one],f'{point_color}.')
     return fig, axes
 
 def plot_dist(data_dict, keys=None, labels=None, shape=None, figsize=5, label_font_size=12, tick_font_size=6):

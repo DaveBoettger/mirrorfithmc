@@ -160,7 +160,7 @@ class Dataset(OrderedDict):
             raise AttributeError
 
     def __repr__(self):
-        rep = '\n'.join([f'Dataset with {len(self)} points and {len(self.markers)} markers:',
+        rep = '\n'.join([f'Dataset named {self.name} with {len(self)} points and {len(self.markers)} markers:',
             *[str(v) for v in self.values()]])
         if len(self.markers):
             rep = '\n'.join([rep, 'Recoginized markers:', *self.markers])
