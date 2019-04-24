@@ -131,10 +131,15 @@ def dict_trace_iterator(dictionary, model, trace):
     for t in tlist:
         yield dict(zip(dictionary.keys(),t))
 
-def build_trace(val, model, trace):
-    pass 
+def trace_array(val, model, trace):
+    this_it = trace_iterator(val, model, trace)
+    ret_list = []
+    for t in this_it:
+        ret_list.append(t)
+    
+    return np.array(ret_list)
 
-def build_dict_trace(dictionary, model, trace):
+def trace_dict(dictionary, model, trace):
     this_it = dict_trace_iterator(dictionary, model, trace)
     this_dict={}
     for k in dictionary:
