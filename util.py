@@ -112,12 +112,25 @@ def find_op_dependencies(obj, val_list=None):
         constants = [v for v in val_list if type(v)==tt.TensorConstant]
         return {'freervs':freervs,'constants':constants}
 
+def is_theano_variable(val):
+    include=[]
+    try:
+        for v in val:
+            include.append(issubclass(type(v), tt.TensorVariable))
+    except TypeError:
+        if not issubclass(type(val), tt.TensorVariable):
+            return False
+        else:
+            return True
+    return include
+
 def trace_iterator(val, model, trace):
     '''Returns an iterator over val that calculates val for model at each point in trace
     val must be a Theano variable or a list of Theano variables.
     '''
     inputs = list(model.vars)
     inputs.extend(model.deterministics)
+
     this_fun=theano.function(inputs=inputs, outputs=val, on_unused_input='ignore')
     for p in trace.points():
         yield this_fun(**p)
