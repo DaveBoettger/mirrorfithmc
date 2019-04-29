@@ -199,3 +199,16 @@ class TheanoTransform():
         rx,ry,rz = theano_matrix2euler(self._R)
         s = self._s
         return {'tx':tx, 'ty':ty, 'tz':tz, 'rx':rx, 'ry':ry, 'rz':rz, 's':s}
+
+    def eval_on_dataset(self, ds, name_modifier=''):
+        '''Convenience function to apply a transform to a dataset.
+
+        For this to work it must be possible to call .eval() on the transformed coordinates.
+        This means that the transform cannot be composed of variables, which is why 
+        this is not implemented in __mul__.
+        '''
+        dst = ds.to_tensors()
+        dstp = self*dst
+        dstafinal = DatasetArrays(pos=dstp.pos.eval(), err=dstp.err.eval(), serr=dstp.serr.eval())
+        return ds.remake_from_arrays(dstafinal, name_modifier=name_modifier)
+        

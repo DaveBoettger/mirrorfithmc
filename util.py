@@ -112,26 +112,32 @@ def find_op_dependencies(obj, val_list=None):
         constants = [v for v in val_list if type(v)==tt.TensorConstant]
         return {'freervs':freervs,'constants':constants}
 
-def is_theano_variable(val):
-    include=[]
-    try:
-        for v in val:
-            include.append(issubclass(type(v), tt.TensorVariable))
-    except TypeError:
-        if not issubclass(type(val), tt.TensorVariable):
-            return False
-        else:
-            return True
-    return include
-
 def trace_iterator(val, model, trace):
     '''Returns an iterator over val that calculates val for model at each point in trace
     val must be a Theano variable or a list of Theano variables.
     '''
+    #We use all of our model variables as inputs. This is everything that appears in a trace.
     inputs = list(model.vars)
     inputs.extend(model.deterministics)
 
-    this_fun=theano.function(inputs=inputs, outputs=val, on_unused_input='ignore')
+    #We want to accomodate the user passing us constants here, so anything that
+    #isn't a theano variable we turn into a sharedvalue so that the theano function
+    #object will accept it as an output. 
+    outputs = []
+    try:
+        for v in val:
+            if not issubclass(type(v), tt.Variable):
+                outputs.append(theano.compile.sharedvalue.shared(v))
+            else:
+                outputs.append(v)
+    except TypeError:
+        #should happen if val is not iterable
+        if not issubclass(type(val), tt.Variable):
+            outputs = theano.compile.sharedvalue.shared(val)
+        else:
+            outputs=val
+
+    this_fun=theano.function(inputs=inputs, outputs=outputs, on_unused_input='ignore')
     for p in trace.points():
         yield this_fun(**p)
 
@@ -164,9 +170,12 @@ def trace_dict(dictionary, model, trace):
         this_dict[k] = np.array(this_dict[k])
     return this_dict
 
-#def recover_dict_trace(dictionary, model, trace):
-#    inputs = list(model.vars)
-#    inputs.extend(model.deterministics)
-#    this_fun=theano.function(inputs=inputs, outputs=list(dictionary.values()), on_unused_input='ignore')
-#    for p in trace.points():
-#        yield dict(zip(dictionary.keys(),this_fun(**p)))
+def mean_trace_array(val, model, trace):
+    ta = trace_array(val, model, trace)
+    return np.mean(ta, axis=0)
+
+def mean_trace_dict(dictionary, model, trace):
+    d = trace_dict(dictionary, model, trace)
+    for k in d:
+        d[k] = np.mean(d[k])
+    return d
