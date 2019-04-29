@@ -2,6 +2,7 @@ import numpy as np
 import pymc3 as pm
 import theano
 import json
+import yaml
 import theano.tensor as tt
 try:
     import mirrorfithmc.lib_transform as lt
@@ -92,6 +93,9 @@ def load_param_file(fName):
     if fName.endswith('.json'):
         with open(fName) as f:
             return json.load(f)
+    elif fName.endswith('.yaml'):
+        with open(fName) as f:
+            return yaml.load(f, Loader=yaml.Loader)
 
 def find_op_dependencies(obj, val_list=None):
     '''This can be useful for debugging'''
@@ -121,7 +125,7 @@ def trace_iterator(val, model, trace):
     inputs.extend(model.deterministics)
 
     #We want to accomodate the user passing us constants here, so anything that
-    #isn't a theano variable we turn into a sharedvalue so that the theano function
+    #isn't a theano variable we turn into a theano sharedvalue so that the theano function
     #object will accept it as an output. 
     outputs = []
     try:
