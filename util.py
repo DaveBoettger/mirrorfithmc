@@ -120,22 +120,25 @@ def trace_iterator(val, model, trace):
     inputs = list(model.vars)
     inputs.extend(model.deterministics)
 
+    #Decide how to treat val.
     #We want to accomodate the user passing us constants here, so anything that
     #isn't a theano variable we turn into a sharedvalue so that the theano function
     #object will accept it as an output. 
-    outputs = []
-    try:
-        for v in val:
-            if not issubclass(type(v), tt.Variable):
-                outputs.append(theano.compile.sharedvalue.shared(v))
-            else:
-                outputs.append(v)
-    except TypeError:
-        #should happen if val is not iterable
-        if not issubclass(type(val), tt.Variable):
+    if type(val) == dict:
+        return dict_trace_iterator(val, model, trace)
+    elif issubclass(type(val), tt.Variable):
+        outputs=val
+    else:
+        outputs = []
+        try:
+            for v in val:
+                if not issubclass(type(v), tt.Variable):
+                    outputs.append(theano.compile.sharedvalue.shared(v))
+                else:
+                    outputs.append(v)
+        except TypeError:
+            #should happen if val is not iterable
             outputs = theano.compile.sharedvalue.shared(val)
-        else:
-            outputs=val
 
     this_fun=theano.function(inputs=inputs, outputs=outputs, on_unused_input='ignore')
     for p in trace.points():
@@ -149,6 +152,13 @@ def dict_trace_iterator(dictionary, model, trace):
     tlist = trace_iterator(val=list(dictionary.values()), model=model, trace=trace)
     for t in tlist:
         yield dict(zip(dictionary.keys(),t))
+
+def reconstruct_trace(val, model, trace):
+
+    if type(val) == dict:
+        return trace_dict(val, model, trace)
+    else:
+        return trace_array(val, model, trace)
 
 def trace_array(val, model, trace):
     this_it = trace_iterator(val, model, trace)
@@ -169,6 +179,12 @@ def trace_dict(dictionary, model, trace):
     for k in this_dict:
         this_dict[k] = np.array(this_dict[k])
     return this_dict
+
+def mean_trace(val, model, trace):
+    if type(val) == dict:
+        return mean_trace_dict(val, model, trace)
+    else:
+        return mean_trace_array(val, model, trace)
 
 def mean_trace_array(val, model, trace):
     ta = trace_array(val, model, trace)
