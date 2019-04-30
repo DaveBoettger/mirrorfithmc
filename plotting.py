@@ -98,7 +98,6 @@ def plot_dist(data_dict, keys=None, labels=None, shape=None, figsize=5, label_fo
     else:
         nrows = shape[0]
         ncols = shape[1]
-    print(data_dict['std'])
     fig,axes = matplotlib.pyplot.subplots(nrows=nrows, ncols=ncols, figsize=(figsize*ncols,figsize*nrows))
     for k,lbl,ax in zip(keys, labels, axes.flat):
         print(k)
