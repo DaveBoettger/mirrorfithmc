@@ -516,7 +516,7 @@ class AlignManyDatasets(pm.Model):
 
         return (diffs, sds)
 
-class AlignMirror2(pm.Model):
+class AlignMirror(pm.Model):
     '''Find transform to apply to ds1 to match it to the mirror given py mirror_definition
 
     fitmap can be used to specifiy which parts of the transform are used in the alignment.
@@ -524,9 +524,14 @@ class AlignMirror2(pm.Model):
     '''
 
     def __init__(self, ds, mirror_definition, name=None, fitmap=None, use_marker=None, use_errors=False, target_thickness = .2, model=None, fit_nu=np.inf):
-        super(AlignMirror2, self).__init__(name, model)
+        super(AlignMirror, self).__init__(name, model)
 
         self.definition = util.load_param_file(mirror_definition)
+        try:
+            self.localcoords = TheanoTransform(self.definition['localcoords'])
+        except:
+            self.localcoords = TheanoTransform()
+
         self.mirror_name = self.definition["default_name"]
         self.target_thickness = target_thickness
 
@@ -534,20 +539,32 @@ class AlignMirror2(pm.Model):
 
         self.fitmap = util.update_fitmap(fitmap, default_fitmap)
 
-        if use_marker is not None:
-            ds = ds.subset_from_marker(use_marker)
-        self.ds=ds
-        self.dst=ds.to_tensors()
-        
-        if name is None:
-            self.name = f'Align_{ds.name}_to_{self.mirror_name}'
+        self.name = name
+
+        #We need to align on a DatasetTensors object, not a Dataset object
+        #If we get the DatasetTensors object, just use it
+        #If we get a Dataset, convert it to DatasetTensors
+        if type(ds) == DatasetTensors:
+            self.dst = ds
+            if use_marker is not None:
+                print("Warning: argument 'use_marker' has no effect when 'ds' argument receives a DatasetTensors object.")
+            if name is None:
+                self.name = 'Align_to_{self.mirror_name}'
+        elif type(ds) == Dataset:
+            if use_marker is not None:
+                ds = ds.subset_from_marker(use_marker)
+            self.ds=ds
+            self.dst=ds.to_tensors()
+            if name is None:
+                self.name = f'Align_{ds.name}_to_{self.mirror_name}'
 
         print(f'{self.name} fitmap is {self.fitmap}')
         self.tvals = util.generate_standard_transform_variables(self.fitmap)
-        self.trans = TheanoTransform(trans=self.tvals)
-
+        self._trans = TheanoTransform(trans=self.tvals) #Evaluated in local coordinates
+        self.trans = (~self.localcoords)*self._trans*(self.localcoords) #Evaluated in external coordinates
         #apply the transform
-        self.dstprime = self.trans*self.dst
+        self._dstprime = self._trans*self.localcoords*self.dst #Evaluated in local coordinates
+        self.dstprime = self.trans*self.dst #Evaluated in external coordinates
 
         #Determine how we represent intrisic error on mirror (ie not measurement error but construction error)
         #(This is the prior on the intrinsic error)
@@ -566,10 +583,10 @@ class AlignMirror2(pm.Model):
         self.k = self.definition['geometry']['k']
 
         if use_errors:
-            dist, dist_error = geometry.z_proj_dist_error(self.dstprime, self.R, self.k, translate_factor=self.trans.translate_factor, target_thickness=target_thickness) 
+            dist, dist_error = geometry.z_proj_dist_error(self._dstprime, self.R, self.k, translate_factor=self._trans.translate_factor, target_thickness=target_thickness) 
             self.dist_error = pm.Deterministic('mirror_dist_error', dist_error)
         else:
-            dist = geometry.z_proj_dist_error(self.dstprime, self.R, self.k, return_error=False, translate_factor=self.trans.translate_factor, target_thickness=target_thickness) 
+            dist = geometry.z_proj_dist_error(self._dstprime, self.R, self.k, return_error=False, translate_factor=self._trans.translate_factor, target_thickness=target_thickness) 
         
         self.dist = pm.Deterministic('mirror_dist', dist)
 
