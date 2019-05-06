@@ -184,18 +184,21 @@ def trace_dict(dictionary, model, trace):
         this_dict[k] = np.array(this_dict[k])
     return this_dict
 
-def mean_trace(val, model, trace):
+def stat_trace(val, model, trace):
     if type(val) == dict:
-        return mean_trace_dict(val, model, trace)
+        return stat_trace_dict(val, model, trace)
     else:
-        return mean_trace_array(val, model, trace)
+        return stat_trace_array(val, model, trace)
 
-def mean_trace_array(val, model, trace):
+def stat_trace_array(val, model, trace):
     ta = trace_array(val, model, trace)
-    return np.mean(ta, axis=0)
+    return np.mean(ta, axis=0), np.std(ta, axis=0)
 
-def mean_trace_dict(dictionary, model, trace):
+def stat_trace_dict(dictionary, model, trace):
     d = trace_dict(dictionary, model, trace)
+    m = {}
+    s = {}
     for k in d:
-        d[k] = np.mean(d[k])
-    return d
+        m[k] = np.mean(d[k])
+        s[k] = np.std(d[k])
+    return m,s

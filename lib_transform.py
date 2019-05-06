@@ -196,9 +196,9 @@ class TheanoTransform():
         '''
         if np.sum(self._rot_center==0.)!=3:
             raise NotImplementedError('Transform parameter recovery is not supported when the transform center is not the origin.')
-        tx = self._tr[0]/self.translate_factor
-        ty = self._tr[1]/self.translate_factor
-        tz = self._tr[2]/self.translate_factor
+        tx = self._tr[0]
+        ty = self._tr[1]
+        tz = self._tr[2]
         rx,ry,rz = theano_matrix2euler(self._R)
         s = self._s
         return {'tx':tx, 'ty':ty, 'tz':tz, 'rx':rx, 'ry':ry, 'rz':rz, 's':s}
