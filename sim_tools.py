@@ -5,7 +5,6 @@ try:
 except:
     import mirrorfithmc as mf
 
-
 def build_XY_circle(radius=1000., x0=0., y0=0., grid_count=10):
     
     xstep = ((radius-x0)-(-radius-x0)) / grid_count
@@ -16,7 +15,7 @@ def build_XY_circle(radius=1000., x0=0., y0=0., grid_count=10):
     y = y[z==1]
     return np.array([x.flatten(),y.flatten()])
 
-def sim_ds_z_projection(k, R, XY, sigmaDelta=0., sigmaX=0., sigmaY=0., sigmaZ=0., target_thickness=.2, marker='SIMPOINT', name='SimulatedData'):
+def sim_ds_z_projection(XY, R, k, sigmaDelta=0., sigmaX=0., sigmaY=0., sigmaZ=0., target_thickness=0., marker='SIMPOINT', name='SimulatedData'):
     conic, deltas, sigmas = mf.geometry.sim_conic_z_projection(k, R, XY, sigmaDelta, sigmaX, sigmaY, sigmaZ, target_thickness)
     points = []
     for i, (x,y,z, delta, sx, sy, sz) in enumerate(zip(conic[0,:], conic[1,:], conic[2,:], deltas, sigmas[0], sigmas[1], sigmas[2])):

@@ -68,6 +68,9 @@ class TheanoTransform():
     Any of the final three override any corresponding setting in the dictionary.
     
     If no information is provided an identity transform is returned.
+
+    Note apply_factors_to_trans=True indicates that the trans specification
+    is in natural units and need to be rescaled to the working units.
     '''
     #translating by translate_factor units is equivalent to 1 data unit
     #typically this will be 1000 microns to 1 mm
@@ -77,14 +80,13 @@ class TheanoTransform():
     full_scale = 100.
     rotation_scale = 180./np.pi
 
-    def __init__(self, trans=None, tr=None, R=None, s=None, rotation_center=None):
-
+    def __init__(self, trans=None, tr=None, R=None, s=None, apply_factors_to_trans=False, rotation_center=None):
         self.reset_rotation_center(rotation_center)
         self._trans = trans
         self._tr = tr
         self._R = R
         self._s = s
-
+        self._apply_factors_to_trans = apply_factors_to_trans
         self._generate()
 
     def reset_rotation_center(self, center=None):
@@ -139,6 +141,13 @@ class TheanoTransform():
             for k in identity.keys():
                 try:
                     trans[k] = self._trans[k]
+                    if self._apply_factors_to_trans:
+                        if k in ['tx', 'ty', 'tz']:
+                            trans[k]*=self.translate_factor
+                        elif k in ['rx', 'ry', 'rz']:
+                            trans[k]*=self.rotation_scale
+                        elif k == 's':
+                            trans[k]*=self.full_scale
                 except KeyError:
                     pass
 

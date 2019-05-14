@@ -46,13 +46,14 @@ class point(object):
                 for i in range(3): self.err[i] = np.abs(float(ll[i+4]))
 
     def __repr__(self):
-        return 'POINT {0} - {1},{2}'.format(self.label,self.pos,self.err)
+        return 'POINT {0} - {1},{2}({3})'.format(self.label,self.pos,self.err,self.metadata)
         
     def copy(self):
         p = point()
         p.pos = self.pos.copy()
         p.err = self.err.copy()
         p.label = self.label
+        p.metadata = self.metadata
         return p
 
 class Dataset(OrderedDict):
@@ -150,6 +151,8 @@ class Dataset(OrderedDict):
             return newlist
         elif name == 'labels':
             return [p.label for p in self.values()]
+        elif name == 'points':
+            return self.values()
         elif name == 'pos':
             return [p.pos for p in self.values()]
         elif name == 'error' or name == 'err':
@@ -203,7 +206,16 @@ class Dataset(OrderedDict):
         new_ds = Dataset(name=f'{self.name}{name_modifier}')
         for p, e, l in zip(pos, serr, labels):
             new_point = point(pos=p, err=e, label=l)
+            new_point.metadata = self[l].metadata
             new_ds.add_point(new_point)
+        return new_ds
+
+    def relabel_points(self, labels):
+        new_ds = Dataset(name=self.name, markers=self.markers, metadata=self.metadata)
+        for p,n in zip(self.points, labels):
+            newp = p.copy()
+            newp.label = n
+            new_ds.add_point(newp)
         return new_ds
 
     def subset_from_labels(self, labels, name_modifier=None):
@@ -523,16 +535,21 @@ class AlignMirror(pm.Model):
     use_marker='MARKER' will select only points with the indicated marker.
     '''
 
-    def __init__(self, ds, mirror_definition, name=None, fitmap=None, use_marker=None, use_errors=False, target_thickness = .2, model=None, fit_nu=np.inf):
+    def __init__(self, ds, mirror_definition, name=None, fitmap=None, use_marker=None, use_errors=False, target_thickness = 0., model=None, fit_nu=np.inf):
         super(AlignMirror, self).__init__(name, model)
 
         self.definition = util.load_param_file(mirror_definition)
         try:
-            self.localcoords = TheanoTransform(self.definition['localcoords'])
-        except:
+            #if the mirror definition includes local coordinates we need to use them
+            self.localcoords = TheanoTransform(self.definition['localcoords'], apply_factors_to_trans=True)
+        except KeyError:
             self.localcoords = TheanoTransform()
 
-        self.mirror_name = self.definition["default_name"]
+        try:
+            self.mirror_name = self.definition["default_name"]
+        except KeyError:
+            self.mirrir_name = 'MIRROR'
+
         self.target_thickness = target_thickness
 
         default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':False, 'R':True, 'mirror_std':True}
