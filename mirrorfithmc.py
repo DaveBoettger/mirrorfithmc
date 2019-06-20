@@ -540,10 +540,22 @@ class AlignMirror(pm.Model):
 
         self.definition = util.load_param_file(mirror_definition)
         try:
-            #if the mirror definition includes local coordinates we need to use them
+            #if the mirror definition file includes local coordinates then load them 
             self.localcoords = TheanoTransform(self.definition['localcoords'], apply_factors_to_trans=True)
         except KeyError:
             self.localcoords = TheanoTransform()
+
+        self.localcoords.check_for_ident = True
+
+        try:
+            #If the mirror definition file includes fitmapcoords then load them
+            self.fitmapcoords = TheanoTransform(self.definition['fitmapcoords'], apply_factors_to_trans=True)
+        except KeyError:
+            self.fitmapcoords = TheanoTransform()
+
+        self.fitmapcoordsinv = ~self.fitmapcoords
+        self.fitmapcoords.check_for_ident = True
+        self.fitmapcoordsinv.check_for_ident = True
 
         try:
             self.mirror_name = self.definition["default_name"]
@@ -577,12 +589,16 @@ class AlignMirror(pm.Model):
 
         print(f'{self.name} fitmap is {self.fitmap}')
         self.tvals = util.generate_standard_transform_variables(self.fitmap)
-        self._trans = TheanoTransform(trans=self.tvals) #Evaluated in local coordinates
-        self.trans = (~self.localcoords)*self._trans*(self.localcoords) #Evaluated in external coordinates
+        self._trans = TheanoTransform(trans=self.tvals) #Evaluated in fitmapcoords coordinates
+        print('fitmapcoords')
+        self._trans.check_for_ident = True
+        self.trans = (self.fitmapcoordsinv)*self._trans*(self.fitmapcoords) #Evaluated in external coordinates
         #apply the transform
-        self._dstprime = self._trans*self.localcoords*self.dst #Evaluated in local coordinates
         self.dstprime = self.trans*self.dst #Evaluated in external coordinates
 
+        print('localcoords times dstprime')
+        print(self.localcoords.is_identity())
+        self._dstprime = self.localcoords*self.dstprime
         #Determine how we represent intrisic error on mirror (ie not measurement error but construction error)
         #(This is the prior on the intrinsic error)
         intrinsic_error = self.definition['errors']['surface_std']

@@ -36,7 +36,6 @@ def z_proj_dist_error(tds, R, k, translate_factor=1., target_thickness=0., retur
             disterror = translate_factor*S*mlib.sqrt(tds.err[2]**2 + (gamma*dz0+slope)**2*sigmarhosq)
 
     else:
-        print('use_error_approx')
         Rsq = R**2
         rsq = tds.pos[0]**2+tds.pos[1]**2
         a = rsq*(k+1)

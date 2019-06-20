@@ -88,6 +88,7 @@ class TheanoTransform():
         self._s = s
         self._apply_factors_to_trans = apply_factors_to_trans
         self._generate()
+        self.check_for_ident = False
 
     def reset_rotation_center(self, center=None):
         '''Set the origin of the rotation.
@@ -163,6 +164,15 @@ class TheanoTransform():
     def __mul__(self, other):
         '''Apply the transfrom'''
         
+        if self.check_for_ident:
+            print('checking for identity')
+            if self.is_identity():
+                print('return other')
+                return other
+            elif type(other) == TheanoTransform and other.is_identity():
+                print('return self')
+                return self
+
         if type(other) == DatasetTensors:
             pos = other.pos
             #In this function we treat error as a signed quantity to get the rotation correct,
@@ -177,6 +187,8 @@ class TheanoTransform():
             return DatasetTensors(pos=new_pos, err=abs(new_err), serr=new_err)
 
         elif type(other) == TheanoTransform:
+
+
             if np.sum(self._rot_center==0.)!=3 or np.sum(other._rot_center==0.)!=3:
                 raise NotImplementedError('Transform composition is not supported when the rotation center is not the coordinate system origin.')
             #Apply to other transform and return a new transform equivalent to successivly applying the two transforms 
@@ -185,6 +197,11 @@ class TheanoTransform():
             new_s = (self._s/self.full_scale * other._s/other.full_scale)*self.full_scale
             return TheanoTransform(tr=new_tr, R=new_R, s=new_s)
 
+        elif type(other) == float or type(other) == int:
+            if other == 1.:
+                return self
+            else:
+                raise NotImplementedError
         else:
             raise NotImplementedError
 
@@ -212,12 +229,31 @@ class TheanoTransform():
         s = self._s
         return {'tx':tx, 'ty':ty, 'tz':tz, 'rx':rx, 'ry':ry, 'rz':rz, 's':s}
 
+    def is_identity(self):
+        '''Returns True if this transform is equal to the identity. This is slow and should only be used for setup.'''
+        ident_final = TheanoTransform().get_final_trans()
+        this_final=self.get_final_trans()
+        for k in this_final:
+            if type(this_final[k]) == tt.TensorVariable:
+                try:
+                    if this_final[k].eval() == ident_final[k].eval():
+                        continue
+                    else:
+                        return False
+                except MissingInputError:
+                    return False
+            else:
+                if this_final[k] == ident_final[k]:
+                    continue
+                else:
+                    return False
+        return True
+            
     def eval_on_dataset(self, ds, name_modifier=''):
         '''Convenience function to apply a transform to a dataset.
 
         For this to work it must be possible to call .eval() on the transformed coordinates.
-        This means that the transform cannot be composed of variables, which is why 
-        this is not implemented in __mul__.
+        This means that the transform cannot be composed of variables, which is why this is not implemented in __mul__.
         '''
         dst = ds.to_tensors()
         dstp = self*dst
