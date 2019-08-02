@@ -307,7 +307,7 @@ class AlignDatasets(pm.Model):
     error_scale1 is used to scale the errors in dataset 1 if error rescaling is turned on in the fitmap. A default will be generated if not provided.
     error_scale2 is used to scale the errors in dataset 2 if error rescaling is turned on in the fitmap. A default will be generated if not provided.
     '''
-    def __init__(self, ds1, ds2, name=None, fitmap=None, select_subsets=True, use_marker=None, rotate_from_center = True, error_scale1=None, error_scale2=None, model=None):
+    def __init__(self, ds1, ds2, name=None, fitmap=None, select_subsets=True, use_marker=None, rotate_from_center = False, error_scale1=None, error_scale2=None, model=None):
         super(AlignDatasets, self).__init__(name, model)
         default_fitmap = {'tx':True, 'ty':True, 'tz':True, 'rx':True, 'ry':True, 'rz':True, 's':True, 'rescale_errors':False}
         if fitmap is not None:
@@ -364,22 +364,24 @@ class AlignDatasets(pm.Model):
         #Compute the distance between the two clouds and the error on that distance
         self.diff =  self.ds1t.pos-self.ds2tprime.pos
         self.sd = tt.sqrt(((self.error_scale1*self.ds1t.err)**2+(self.error_scale2*self.ds2tprime.err)**2))
-
         #specify the alignment
         align = util.generate_alignment_distribution('align', sd=self.sd, observed=self.diff)
 
     def calc_diff(self, trace):
         '''Calculate the vector differences of the points and their standard deviation estimated from 
         the errors in the datasets'''
-        sds = []
-        diffs = []
+        #sds = []
+        #diffs = []
 
-        diff = theano.function(inputs=list(self.vars), outputs=self.diff, on_unused_input='ignore')
-        sd = theano.function(inputs=list(self.vars), outputs=self.sd, on_unused_input='ignore')
-        for p in trace.points():
-            diffs.append(diff(**p))
-            sds.append(sd(**p))
-        return np.array(diffs).T, np.sqrt(np.array(sds)).T
+        #diff = theano.function(inputs=list(self.vars), outputs=self.diff, on_unused_input='ignore')
+        #sd = theano.function(inputs=list(self.vars), outputs=self.sd, on_unused_input='ignore')
+        #for p in trace.points():
+        #    diffs.append(diff(**p))
+        #    sds.append(sd(**p))
+        #return np.array(diffs).T, np.sqrt(np.array(sds)).T
+        diffs = util.trace_array(self.diff, self, trace)
+        sds = util.trace_array(self.sd, self, trace)
+        return diffs, sds
 
     def use_transform_trace(self, other, trace):
         '''Builds functions that apply the transform from this fit to a DatasetTensors object.
@@ -488,7 +490,24 @@ class AlignManyDatasets(pm.Model):
         #We now have one alignment object left in our temporary list, which we can move into our stored list
         self.alignments.append(temp_alignments.pop())
 
+
     def calc_diff(self, trace):
+        '''Calculate the vector differences of the points and their standard deviation estimated from 
+        the errors in the datasets
+        This is computed between all combinations of datasets.
+        '''
+        sds = {}
+        diffs = {} 
+
+        testpoint = self.test_point
+        #reference alignments:
+        for align in self.alignments:
+            keyname = align.name
+            diffs[keyname] = util.trace_array(align.diff, self, trace)
+            sds[keyname] = util.trace_array(align.sd, self, trace)
+        return (diffs, sds)
+
+    def calc_diff2(self, trace):
         '''Calculate the vector differences of the points and their standard deviation estimated from 
         the errors in the datasets
         This is computed between all combinations of datasets.

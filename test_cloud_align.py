@@ -39,14 +39,20 @@ def load_model_moons():
     ds1 = mf.Dataset(from_file='./MOONS/VSTARS/moons_20160802_1_aligned.txt', name='DS1')
     ds2 = mf.Dataset(from_file='./MOONS/VSTARS/moons_20160802_2_aligned.txt', name='DS2') 
     ds3 = mf.Dataset(from_file='./MOONS/VSTARS/moons_20160802_3_aligned.txt', name='DS3') 
-    with mf.AlignDatasets(ds1=ds1,ds2=ds2, use_marker='TARGET', fitmap={'tx':True, 'ty':True, 'tz':True, 's':True, 'rx':True, 'ry':True, 'rz':True}) as model: 
+    with mf.AlignDatasets(ds1=ds1,ds2=ds3, use_marker='TARGET', fitmap={'tx':True, 'ty':True, 'tz':True, 's':True, 'rx':True, 'ry':True, 'rz':True}) as model: 
         return model
 
+def load_model_moons_scaleerrors():
+    ds1 = mf.Dataset(from_file='./MOONS/VSTARS/moons_20160802_1_aligned.txt', name='DS1')
+    ds2 = mf.Dataset(from_file='./MOONS/VSTARS/moons_20160802_2_aligned.txt', name='DS2') 
+    ds3 = mf.Dataset(from_file='./MOONS/VSTARS/moons_20160802_3_aligned.txt', name='DS3') 
+    with mf.AlignDatasets(ds1=ds1,ds2=ds3, use_marker='TARGET', fitmap={'tx':True, 'ty':True, 'tz':True, 's':True, 'rx':True, 'ry':True, 'rz':True, 'rescale_errors':True}) as model: 
+        return model
 def load_multi_model_moons():
     ds1 = mf.Dataset(from_file='./MOONS/VSTARS/moons_20160802_1_aligned.txt', name='DS1')
     ds2 = mf.Dataset(from_file='./MOONS/VSTARS/moons_20160802_2_aligned.txt', name='DS2') 
     ds3 = mf.Dataset(from_file='./MOONS/VSTARS/moons_20160802_3_aligned.txt', name='DS3') 
-    with mf.AlignManyDatasets(reference=ds1, datasets=[ds2,ds3], use_marker='TARGET') as model:
+    with mf.AlignManyDatasets(reference=ds1, datasets=[ds2,ds3], use_marker='TARGET', error_scale1=1., error_scale2=1.) as model:
         return model
 
 def find_map(model):
@@ -56,7 +62,7 @@ def find_map(model):
 def sample(model):
 
     with model as model: 
-        trace = pm.sample(2000, tune=800, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}) 
+        trace = pm.sample(2000, tune=3800, init = 'advi+adapt_diag', nuts_kwargs={'target_accept': .98, 'max_treedepth': 25}) 
         #trace = pm.sample(2000, tune=5500, init = 'jitter+adapt_diag', nuts_kwargs={'target_accept': .90, 'max_treedepth': 25}) 
 
         return trace
