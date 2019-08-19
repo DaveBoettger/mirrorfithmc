@@ -165,12 +165,9 @@ class TheanoTransform():
         '''Apply the transfrom'''
         
         if self.check_for_ident:
-            print('checking for identity')
             if self.is_identity():
-                print('return other')
                 return other
             elif type(other) == TheanoTransform and other.is_identity():
-                print('return self')
                 return self
 
         if type(other) == DatasetTensors:

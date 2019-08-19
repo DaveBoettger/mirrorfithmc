@@ -502,9 +502,13 @@ class AlignManyDatasets(pm.Model):
         testpoint = self.test_point
         #reference alignments:
         for align in self.alignments:
-            keyname = align.name
+            keyname = f'{align.ds1.name}-{align.ds2.name}'
             diffs[keyname] = util.trace_array(align.diff, self, trace)
             sds[keyname] = util.trace_array(align.sd, self, trace)
+        for ckey in self.cross_diffs:
+            diffs[ckey] = util.trace_array(self.cross_diffs[ckey], self, trace)
+            sds[ckey] = util.trace_array(self.cross_sds[ckey], self, trace)
+
         return (diffs, sds)
 
     def calc_diff2(self, trace):
@@ -609,14 +613,11 @@ class AlignMirror(pm.Model):
         print(f'{self.name} fitmap is {self.fitmap}')
         self.tvals = util.generate_standard_transform_variables(self.fitmap)
         self._trans = TheanoTransform(trans=self.tvals) #Evaluated in fitmapcoords coordinates
-        print('fitmapcoords')
         self._trans.check_for_ident = True
         self.trans = (self.fitmapcoordsinv)*self._trans*(self.fitmapcoords) #Evaluated in external coordinates
         #apply the transform
         self.dstprime = self.trans*self.dst #Evaluated in external coordinates
 
-        print('localcoords times dstprime')
-        print(self.localcoords.is_identity())
         self._dstprime = self.localcoords*self.dstprime
         #Determine how we represent intrisic error on mirror (ie not measurement error but construction error)
         #(This is the prior on the intrinsic error)
